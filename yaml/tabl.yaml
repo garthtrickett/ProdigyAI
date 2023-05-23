@@ -1,0 +1,20 @@
+# sample config defaults file
+dataset:
+  desc: null
+  value: hxbbht7f.h5
+epochs:
+  desc: Number of epochs to train over
+  value: 1000
+batch_size:
+  desc: Size of each mini-batch
+  value: 256
+window_length:
+  desc: null
+  value: 200
+num_features:
+  desc: null
+  value: 40
+dropout:
+  desc: null
+  value: 0.1
+

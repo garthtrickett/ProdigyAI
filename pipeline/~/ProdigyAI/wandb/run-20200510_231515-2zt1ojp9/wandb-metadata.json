@@ -1,0 +1,27 @@
+{
+    "root": "/home/garthtrickett/ProdigyAI",
+    "program": "/home/garthtrickett/ProdigyAI/pipeline/preprocessing.py",
+    "git": {
+        "remote": "https://github.com/garthtrickett/ProdigyAI",
+        "commit": "7667fefed2018a0664418c25c97e3c08866a6f71"
+    },
+    "email": "garthtrickett@gmail.com",
+    "codePath": "pipeline/preprocessing.py",
+    "startedAt": "2020-05-10T23:15:15.464760",
+    "host": "preemp-cpu-1",
+    "username": "garthtrickett",
+    "executable": "/home/garthtrickett/miniconda3/envs/ProdigyAI/bin/python",
+    "os": "Linux-5.3.0-1018-gcp-x86_64-with-debian-buster-sid",
+    "python": "3.7.6",
+    "cpu_count": 6,
+    "args": [
+        "-f",
+        "/home/garthtrickett/.local/share/jupyter/runtime/kernel-5353083d-18a0-487c-8e56-1941f94ac5d2.json"
+    ],
+    "state": "running",
+    "jobType": null,
+    "mode": "run",
+    "name": "tough-river-27",
+    "project": "prodigyai",
+    "heartbeatAt": "2020-05-10T23:15:17.907809"
+}

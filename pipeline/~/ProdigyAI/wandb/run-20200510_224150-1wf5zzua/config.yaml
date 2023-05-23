@@ -1,0 +1,30 @@
+wandb_version: 1
+
+_wandb:
+  desc: null
+  value:
+    cli_version: 0.8.35
+    code_path: code/pipeline/preprocessing.py
+    framework: torch
+    is_jupyter_run: true
+    is_kaggle_kernel: false
+    python_version: 3.7.6
+    session_history: code/_session_history.ipynb
+params:
+  desc: null
+  value:
+    minimum_return:
+      desc: Amount of return chosen to consider it a profitable trade
+      value: 0.001 * 1 / 23
+    profit_taking_multiplier:
+      desc: Vertical Barrier profit taking multiplier
+      value: 1
+    stop_loss_multiplier:
+      desc: Vertical Barrier profit taking multiplier
+      value: 1
+    window_length:
+      desc: Length of the input feature window
+      value: 200
+yaml:
+  desc: null
+  value: ../yaml/preprocessing.yaml

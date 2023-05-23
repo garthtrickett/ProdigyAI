@@ -1,0 +1,27 @@
+{
+    "root": "/home/garthtrickett/ProdigyAI",
+    "program": "/home/garthtrickett/ProdigyAI/pipeline/tabl.py",
+    "git": {
+        "remote": "https://github.com/garthtrickett/ProdigyAI",
+        "commit": "28f66175f6574414f2b3f591102e1ba3ba042f73"
+    },
+    "email": "garthtrickett@gmail.com",
+    "codePath": "pipeline/tabl.py",
+    "startedAt": "2020-05-12T07:25:28.193750",
+    "host": "preemp-cpu-1",
+    "username": "garthtrickett",
+    "executable": "/home/garthtrickett/miniconda3/envs/ProdigyAI/bin/python",
+    "os": "Linux-5.3.0-1018-gcp-x86_64-with-debian-buster-sid",
+    "python": "3.7.6",
+    "cpu_count": 6,
+    "args": [
+        "-f",
+        "/home/garthtrickett/.local/share/jupyter/runtime/kernel-3a8a81ee-cf58-4a47-be0b-885150c952a2.json"
+    ],
+    "state": "running",
+    "jobType": null,
+    "mode": "run",
+    "name": "royal-sun-80",
+    "project": "prodigyai",
+    "heartbeatAt": "2020-05-12T07:25:29.417126"
+}

@@ -1,0 +1,2391 @@
+diff --git a/pipeline/preprocessing.py b/pipeline/preprocessing.py
+index 714d325..e845b7c 100644
+--- a/pipeline/preprocessing.py
++++ b/pipeline/preprocessing.py
+@@ -81,6 +81,10 @@ except Exception as e:
+                         "--is_finished",
+                         type=str,
+                         help="Is this a continuation of preempted instance?")
++    parser.add_argument("-r",
++                        "--resuming",
++                        type=str,
++                        help="Is this a continuation of preempted instance?")
+     args = parser.parse_args()
+     if args.stage != None:
+         arg_parse_stage = 1
+@@ -155,10 +159,6 @@ minimum_return = eval(wandb.config['params']['minimum_return']['value'])
+ vertical_barrier_seconds = eval(
+     wandb.config['params']['vertical_barrier_seconds']['value'])
+ 
+-# Parameters
+-parameters = dict()
+-wandb.config['params']['head'][
+-    'value'] = 1000  # take only first x number of rows 0 means of
+ volume_max = (
+     minimum_return + wandb.config['params']['vol_max_modifier']['value']
+ )  # The higher this is the more an increase in volatility requries an increase
+@@ -390,8 +390,8 @@ if regenerate_features_and_labels == True:
+         num_threads=cpus * 2,
+         vertical_barrier_times=vertical_barrier_timestamps,
+         side_prediction=side,
+-        split_by=
+-        100  # maybe we want this as large as we can while still fitting in ram
++        split_by=wandb.config['params']['split_by']
++        ['value']  # maybe we want this as large as we can while still fitting in ram
+     )
+ 
+     end = time.time()
+@@ -481,14 +481,11 @@ else:
+     h5f.close()
+     sampled_idx = pd.DatetimeIndex(sampled_idx_epoch)
+ 
+-y_dataframe = labels["bin"]
+-data["bins"] = labels["bin"]
+-y = np.asarray(y_dataframe)
+-end = time.time()
+-
+-y = keras.utils.to_categorical(y, num_classes=3)
+-
+ if stage == 1:
++    # Get why from labels
++    y_dataframe = labels["bin"]
++    data["bins"] = labels["bin"]
++    y = np.asarray(y_dataframe)
+ 
+     start_time = time.time()
+     # side
+@@ -497,15 +494,20 @@ if stage == 1:
+     end_time = time.time()
+     print(end_time - start_time)
+ 
+-    # ### FOR HIGHWAY RNN
+-    # X = np.asarray(volumes.loc[labels.index, :])
++    ### FOR HIGHWAY RNN
++    X = np.asarray(volumes.loc[labels.index, :])
++
++    h5f = h5py.File(
++        path_adjust + "data/preprocessed/" + parameter_string + "_gam_rhn.h5",
++        "w")
++    h5f.create_dataset("X", data=X)
++    h5f.create_dataset("y", data=y)
++    h5f.close()
+ 
+-    # h5f = h5py.File(path_adjust + "data/preprocessed/" + parameter_string + ".h5", "w")
+-    # h5f.create_dataset("X", data=X)
+-    # h5f.create_dataset("y", data=y)
+-    # h5f.close()
++    X = []
+ 
+-    # X = []
++    ### One hot encode y
++    y = keras.utils.to_categorical(y, num_classes=3)
+ 
+     start_time = time.time()
+ 
+@@ -600,7 +602,7 @@ if stage == 1:
+     print("Make input features from orderbook data started")
+     start_time = time.time()
+ 
+-    # MAKE WINDOW FROM INPUTS
++    # Make input features from orderbook data
+     input_features_train = make_input_features_from_orderbook_data(
+         volumes_for_all_labels_train)
+ 
+diff --git a/pipeline/tabl.py b/pipeline/tabl.py
+index b06858f..98015e4 100644
+--- a/pipeline/tabl.py
++++ b/pipeline/tabl.py
+@@ -124,7 +124,7 @@ import h5py
+ 
+ home = str(Path.home())
+ 
+-file_name = "esugj36b.h5"
++file_name = "1fdpldp4.h5"
+ wandb.config.update({'dataset': file_name})
+ path = home + "/ProdigyAI/data/preprocessed/" + file_name
+ h5f = h5py.File(path, "r")
+Submodule third_party_libraries/TABL contains modified content
+diff --git a/third_party_libraries/TABL/__pycache__/Models.cpython-37.pyc b/third_party_libraries/TABL/__pycache__/Models.cpython-37.pyc
+index a57f1ba..523d214 100644
+Binary files a/third_party_libraries/TABL/__pycache__/Models.cpython-37.pyc and b/third_party_libraries/TABL/__pycache__/Models.cpython-37.pyc differ
+Submodule third_party_libraries/gam_rhn contains modified content
+diff --git a/third_party_libraries/gam_rhn/95-FI2010/fi_core.py b/third_party_libraries/gam_rhn/95-FI2010/fi_core.py
+index 4a37d36..7996516 100644
+--- a/third_party_libraries/gam_rhn/95-FI2010/fi_core.py
++++ b/third_party_libraries/gam_rhn/95-FI2010/fi_core.py
+@@ -8,7 +8,8 @@ for _ in range(DIR_DEPTH + 1):
+     ROOT = os.path.dirname(ROOT)
+     sys.path.insert(0, ROOT)
+ import numpy as np
+-import tensorflow as tf
++import tensorflow.compat.v1 as tf
++tf.disable_v2_behavior()
+ from tframe import console, SaveMode
+ from tframe import Classifier
+ from tframe.trainers import SmartTrainerHub as Config
+@@ -89,10 +90,13 @@ def activate():
+     # Calculate class weights
+     if th.class_weights is None and th.loss_string == "wce":
+         train_targets = train_set.stack.targets.flatten()
+-        samples_per_class = [sum(train_targets == c) for c in range(th.num_classes)]
++        samples_per_class = [
++            sum(train_targets == c) for c in range(th.num_classes)
++        ]
+         class_weights = min(samples_per_class) / np.array(samples_per_class)
+         th.class_weights = class_weights
+-        console.show_status("Class weights set to {}".format(th.class_weights), "++")
++        console.show_status("Class weights set to {}".format(th.class_weights),
++                            "++")
+ 
+     # Set input shape according to th.max_level and th.volume_only
+     du.FI2010.set_input_shape()
+@@ -102,6 +106,9 @@ def activate():
+     model = th.model(th)
+     assert isinstance(model, Classifier)
+ 
++    import pdb
++    pdb.set_trace()
++
+     # Train or evaluate
+     if th.train:
+         model.train(
+diff --git a/third_party_libraries/gam_rhn/95-FI2010/fi_mu.py b/third_party_libraries/gam_rhn/95-FI2010/fi_mu.py
+index 3148d9e..bacc8f7 100644
+--- a/third_party_libraries/gam_rhn/95-FI2010/fi_mu.py
++++ b/third_party_libraries/gam_rhn/95-FI2010/fi_mu.py
+@@ -1,4 +1,5 @@
+-import tensorflow as tf
++import tensorflow.compat.v1 as tf
++tf.disable_v2_behavior()
+ from tframe import Classifier
+ 
+ from tframe.layers import Input, Activation
+diff --git a/third_party_libraries/gam_rhn/95-FI2010/t95_bl_gam_rhn.py b/third_party_libraries/gam_rhn/95-FI2010/t95_bl_gam_rhn.py
+index 4e6678f..bd2f165 100644
+--- a/third_party_libraries/gam_rhn/95-FI2010/t95_bl_gam_rhn.py
++++ b/third_party_libraries/gam_rhn/95-FI2010/t95_bl_gam_rhn.py
+@@ -1,4 +1,5 @@
+-import tensorflow as tf
++import tensorflow.compat.v1 as tf
++tf.disable_v2_behavior()
+ import fi_core as core
+ import fi_mu as m
+ from tframe import console
+@@ -41,8 +42,7 @@ def model(th):
+             kernel=th.hyper_kernel,
+             gam_dropout=th.gam_dropout,
+             rhn_dropout=th.rhn_dropout,
+-        )
+-    )
++        ))
+     return m.typical(th, layers)
+ 
+ 
+@@ -121,4 +121,3 @@ def main(_):
+ 
+ if __name__ == "__main__":
+     tf.app.run()
+-
+Submodule tframe contains modified content
+Submodule tframe 4c4289d..37c9f0b:
+diff --git a/third_party_libraries/gam_rhn/tframe/configs/flag.py b/third_party_libraries/gam_rhn/tframe/configs/flag.py
+index 32723d2..e4be7a6 100644
+--- a/third_party_libraries/gam_rhn/tframe/configs/flag.py
++++ b/third_party_libraries/gam_rhn/tframe/configs/flag.py
+@@ -3,18 +3,24 @@ from __future__ import division
+ from __future__ import print_function
+ 
+ import re
+-import tensorflow as tf
++import tensorflow.compat.v1 as tf
++tf.disable_v2_behavior()
+ from tframe.enums import EnumPro
+ 
+ flags = tf.app.flags
+ 
+-
+ # TODO: Value set to Flag should be checked
+ 
++
+ class Flag(object):
+-  def __init__(self, default_value, description, register=None, name=None,
+-               is_key=False, **kwargs):
+-    """
++    def __init__(self,
++                 default_value,
++                 description,
++                 register=None,
++                 name=None,
++                 is_key=False,
++                 **kwargs):
++        """
+     ... another way to design this class is to let name attribute be assigned
+     when registered, but we need to allow FLAGS names such as 'job-dir' to be
+     legal. In this perspective, this design is better.
+@@ -26,143 +32,163 @@ class Flag(object):
+                     (3) None: show if has been modified
+     :param register: if is None, this flag can not be passed via tf FLAGS
+     """
+-    self.name = name
+-    self._default_value = default_value
+-    self._description = description
+-    self._register = register
+-    self._is_key = is_key
+-    self._kwargs = kwargs
+-
+-    self._value = default_value
+-    self._frozen = False
+-
+-  # region : Properties
+-
+-  @property
+-  def ready_to_be_key(self):
+-    return self._is_key is None
+-
+-  @property
+-  def is_key(self):
+-    if self._is_key is False: return False
+-    if not self.should_register: return self._is_key is True
+-    assert hasattr(flags.FLAGS, self.name)
+-    return self._is_key is True or getattr(flags.FLAGS, self.name) is not None
+-
+-  @property
+-  def frozen(self):
+-    return self._frozen
+-
+-  @property
+-  def value(self):
+-    # If not registered to tf.app.flags or has been frozen
+-    if self._register is None or self._frozen: return self._value
+-
+-    assert hasattr(flags.FLAGS, self.name)
+-    f_value = getattr(flags.FLAGS, self.name)
+-    # Configs defined via tensorflow FLAGS have priority over any other way
+-    if f_value is None: return self._value
+-    # If self is en enum Flag, then f_value must be a string in
+-    # .. self.enum_class.value_list(), so we need to get its member
+-    if self.is_enum: f_value = self.enum_class.get_member(f_value)
+-    if self.frozen and self._value != f_value:
+-      raise AssertionError(
+-        "!! Invalid tensorflow FLAGS value {0}={1} 'cause {0} has been "
+-        "frozen to {2}".format(self.name, f_value, self._value))
+-    return f_value
+-
+-  @property
+-  def should_register(self):
+-    return self._register is not None
+-
+-  @property
+-  def enum_class(self):
+-    cls = self._kwargs.get('enum_class', None)
+-    if cls is None or not issubclass(cls, EnumPro): return None
+-    return cls
+-
+-  @property
+-  def is_enum(self):
+-    return self.enum_class is not None and self._register is flags.DEFINE_enum
+-
+-  # endregion : Properties
+-
+-  # region : Class Methods
+-
+-  @classmethod
+-  def whatever(cls, default_value, description, is_key=False):
+-    return Flag(default_value, description, is_key=is_key)
+-
+-  @classmethod
+-  def string(cls, default_value, description, name=None, is_key=False):
+-    return Flag(default_value, description, flags.DEFINE_string, name,
+-                is_key=is_key)
+-
+-  @classmethod
+-  def boolean(cls, default_value, description, name=None, is_key=False):
+-    return Flag(default_value, description, flags.DEFINE_boolean, name,
+-                is_key=is_key)
+-
+-  @classmethod
+-  def integer(cls, default_value, description, name=None, is_key=False):
+-    return Flag(default_value, description, flags.DEFINE_integer, name,
+-                is_key=is_key)
+-
+-  @classmethod
+-  def float(cls, default_value, description, name=None, is_key=False):
+-    return Flag(default_value, description, flags.DEFINE_float, name,
+-                is_key=is_key)
+-
+-  @classmethod
+-  def list(cls, default_value, description, name=None):
+-    return Flag(default_value, description, flags.DEFINE_list, name)
+-
+-  @classmethod
+-  def enum(cls, default_value, enum_class, description, name=None,
+-           is_key=False):
+-    assert issubclass(enum_class, EnumPro)
+-    return Flag(default_value, description, flags.DEFINE_enum, name,
+-                enum_class=enum_class, is_key=is_key)
+-
+-  # endregion : Class Methods
+-
+-  # region : Public Methods
+-
+-  def register(self, name):
+-    # If name is not specified during construction, use flag's attribute name
+-    # .. in Config
+-    if self.name is None: self.name = name
+-    if self._register is None or self.name in list(flags.FLAGS): return
+-    # Register enum flag
+-    if self.is_enum:
+-      flags.DEFINE_enum(
+-        self.name, None, self.enum_class.value_list(), self._description)
+-      return
+-    # Register other flag
+-    assert self._register is not flags.DEFINE_enum
+-    self._register(self.name, None, self._description)
+-
+-  def new_value(self, value):
+-    flg = Flag(self._default_value, self._description, self._register,
+-               self.name, **self._kwargs)
+-    flg._value = value
+-    return flg
+-
+-  def freeze(self, value):
+-    self._value = value
+-    self._frozen = True
+-
+-  # endregion : Public Methods
+-
+-  # region : Private Methods
+-
+-  @staticmethod
+-  def parse_comma(arg, dtype=str):
+-    r = re.fullmatch(r'([\-\d.,]+)', arg)
+-    if r is None: raise AssertionError(
+-      'Can not parse argument `{}`'.format(arg))
+-    val_list = re.split(r'[,]', r.group())
+-    return [dtype(v) for v in val_list]
+-
+-  # endregion : Private Methods
+-
++        self.name = name
++        self._default_value = default_value
++        self._description = description
++        self._register = register
++        self._is_key = is_key
++        self._kwargs = kwargs
++
++        self._value = default_value
++        self._frozen = False
++
++    # region : Properties
++
++    @property
++    def ready_to_be_key(self):
++        return self._is_key is None
++
++    @property
++    def is_key(self):
++        if self._is_key is False: return False
++        if not self.should_register: return self._is_key is True
++        assert hasattr(flags.FLAGS, self.name)
++        return self._is_key is True or getattr(flags.FLAGS,
++                                               self.name) is not None
++
++    @property
++    def frozen(self):
++        return self._frozen
++
++    @property
++    def value(self):
++        # If not registered to tf.app.flags or has been frozen
++        if self._register is None or self._frozen: return self._value
++
++        assert hasattr(flags.FLAGS, self.name)
++        f_value = getattr(flags.FLAGS, self.name)
++        # Configs defined via tensorflow FLAGS have priority over any other way
++        if f_value is None: return self._value
++        # If self is en enum Flag, then f_value must be a string in
++        # .. self.enum_class.value_list(), so we need to get its member
++        if self.is_enum: f_value = self.enum_class.get_member(f_value)
++        if self.frozen and self._value != f_value:
++            raise AssertionError(
++                "!! Invalid tensorflow FLAGS value {0}={1} 'cause {0} has been "
++                "frozen to {2}".format(self.name, f_value, self._value))
++        return f_value
++
++    @property
++    def should_register(self):
++        return self._register is not None
++
++    @property
++    def enum_class(self):
++        cls = self._kwargs.get('enum_class', None)
++        if cls is None or not issubclass(cls, EnumPro): return None
++        return cls
++
++    @property
++    def is_enum(self):
++        return self.enum_class is not None and self._register is flags.DEFINE_enum
++
++    # endregion : Properties
++
++    # region : Class Methods
++
++    @classmethod
++    def whatever(cls, default_value, description, is_key=False):
++        return Flag(default_value, description, is_key=is_key)
++
++    @classmethod
++    def string(cls, default_value, description, name=None, is_key=False):
++        return Flag(default_value,
++                    description,
++                    flags.DEFINE_string,
++                    name,
++                    is_key=is_key)
++
++    @classmethod
++    def boolean(cls, default_value, description, name=None, is_key=False):
++        return Flag(default_value,
++                    description,
++                    flags.DEFINE_boolean,
++                    name,
++                    is_key=is_key)
++
++    @classmethod
++    def integer(cls, default_value, description, name=None, is_key=False):
++        return Flag(default_value,
++                    description,
++                    flags.DEFINE_integer,
++                    name,
++                    is_key=is_key)
++
++    @classmethod
++    def float(cls, default_value, description, name=None, is_key=False):
++        return Flag(default_value,
++                    description,
++                    flags.DEFINE_float,
++                    name,
++                    is_key=is_key)
++
++    @classmethod
++    def list(cls, default_value, description, name=None):
++        return Flag(default_value, description, flags.DEFINE_list, name)
++
++    @classmethod
++    def enum(cls,
++             default_value,
++             enum_class,
++             description,
++             name=None,
++             is_key=False):
++        assert issubclass(enum_class, EnumPro)
++        return Flag(default_value,
++                    description,
++                    flags.DEFINE_enum,
++                    name,
++                    enum_class=enum_class,
++                    is_key=is_key)
++
++    # endregion : Class Methods
++
++    # region : Public Methods
++
++    def register(self, name):
++        # If name is not specified during construction, use flag's attribute name
++        # .. in Config
++        if self.name is None: self.name = name
++        if self._register is None or self.name in list(flags.FLAGS): return
++        # Register enum flag
++        if self.is_enum:
++            flags.DEFINE_enum(self.name, None, self.enum_class.value_list(),
++                              self._description)
++            return
++        # Register other flag
++        assert self._register is not flags.DEFINE_enum
++        self._register(self.name, None, self._description)
++
++    def new_value(self, value):
++        flg = Flag(self._default_value, self._description, self._register,
++                   self.name, **self._kwargs)
++        flg._value = value
++        return flg
++
++    def freeze(self, value):
++        self._value = value
++        self._frozen = True
++
++    # endregion : Public Methods
++
++    # region : Private Methods
++
++    @staticmethod
++    def parse_comma(arg, dtype=str):
++        r = re.fullmatch(r'([\-\d.,]+)', arg)
++        if r is None:
++            raise AssertionError('Can not parse argument `{}`'.format(arg))
++        val_list = re.split(r'[,]', r.group())
++        return [dtype(v) for v in val_list]
++
++    # endregion : Private Methods
+diff --git a/third_party_libraries/gam_rhn/tframe/core/agent.py b/third_party_libraries/gam_rhn/tframe/core/agent.py
+index 5ef39e3..30b2ce4 100644
+--- a/third_party_libraries/gam_rhn/tframe/core/agent.py
++++ b/third_party_libraries/gam_rhn/tframe/core/agent.py
+@@ -5,7 +5,8 @@ from __future__ import print_function
+ import os
+ import time
+ 
+-import tensorflow as tf
++import tensorflow.compat.v1 as tf
++tf.disable_v2_behavior()
+ import tframe as tfr
+ 
+ from tframe import hub
+@@ -23,336 +24,366 @@ from tframe.core.decorators import with_graph
+ 
+ 
+ class Agent(object):
+-  """An Agent works for TFrame Model, handling tensorflow stuffs"""
+-  def __init__(self, model, graph=None):
+-    # Each agent works on one tensorflow graph with a tensorflow session
+-    # .. set to it
+-    assert isinstance(model, tfr.models.Model)
+-    self._model = model
+-    self._session = None
+-    self._graph = None
+-    # Graph variables
+-    self._is_training = None
+-    self._init_graph(graph)
+-    # An agent saves model and writes summary
+-    self._saver = None
+-    self._summary_writer = None
+-    # An agent holds a default note
+-    self._note = Note()
+-    context.note = self._note
+-
+-  # region : Properties
+-
+-  # region : Accessors
+-
+-  @property
+-  def graph(self):
+-    assert isinstance(self._graph, tf.Graph)
+-    return self._graph
+-
+-  @property
+-  def session(self):
+-    assert isinstance(self._session, tf.Session)
+-    return self._session
+-
+-  @property
+-  def saver(self):
+-    assert isinstance(self._saver, tf.train.Saver)
+-    return self._saver
+-
+-  @property
+-  def summary_writer(self):
+-    assert isinstance(self._summary_writer, tf.summary.FileWriter)
+-    return self._summary_writer
+-
+-  # endregion : Accessors
+-
+-  # region : Paths
+-
+-  @property
+-  def root_path(self):
+-    if hub.job_dir == './': return hub.record_dir
+-    else: return hub.job_dir
+-
+-  @property
+-  def note_dir(self):
+-    return check_path(self.root_path, hub.note_folder_name,
+-                      self._model.mark, create_path=hub.export_note)
+-  @property
+-  def log_dir(self):
+-    return check_path(self.root_path, hub.log_folder_name,
+-                      self._model.mark, create_path=hub.summary)
+-  @property
+-  def ckpt_dir(self):
+-    if hub.specified_ckpt_path is not None: return hub.specified_ckpt_path
+-    return check_path(self.root_path, hub.ckpt_folder_name,
+-                      self._model.mark, create_path=hub.save_model)
+-  @property
+-  def snapshot_dir(self):
+-    return check_path(self.root_path, hub.snapshot_folder_name,
+-                      self._model.mark, create_path=hub.snapshot)
+-  @property
+-  def model_path(self):
+-    """This property will be used only when checkpoint is to be saved.
++    """An Agent works for TFrame Model, handling tensorflow stuffs"""
++    def __init__(self, model, graph=None):
++        # Each agent works on one tensorflow graph with a tensorflow session
++        # .. set to it
++        assert isinstance(model, tfr.models.Model)
++        self._model = model
++        self._session = None
++        self._graph = None
++        # Graph variables
++        self._is_training = None
++        self._init_graph(graph)
++        # An agent saves model and writes summary
++        self._saver = None
++        self._summary_writer = None
++        # An agent holds a default note
++        self._note = Note()
++        context.note = self._note
++
++    # region : Properties
++
++    # region : Accessors
++
++    @property
++    def graph(self):
++        assert isinstance(self._graph, tf.Graph)
++        return self._graph
++
++    @property
++    def session(self):
++        assert isinstance(self._session, tf.Session)
++        return self._session
++
++    @property
++    def saver(self):
++        assert isinstance(self._saver, tf.train.Saver)
++        return self._saver
++
++    @property
++    def summary_writer(self):
++        assert isinstance(self._summary_writer, tf.summary.FileWriter)
++        return self._summary_writer
++
++    # endregion : Accessors
++
++    # region : Paths
++
++    @property
++    def root_path(self):
++        if hub.job_dir == './': return hub.record_dir
++        else: return hub.job_dir
++
++    @property
++    def note_dir(self):
++        return check_path(self.root_path,
++                          hub.note_folder_name,
++                          self._model.mark,
++                          create_path=hub.export_note)
++
++    @property
++    def log_dir(self):
++        return check_path(self.root_path,
++                          hub.log_folder_name,
++                          self._model.mark,
++                          create_path=hub.summary)
++
++    @property
++    def ckpt_dir(self):
++        if hub.specified_ckpt_path is not None: return hub.specified_ckpt_path
++        return check_path(self.root_path,
++                          hub.ckpt_folder_name,
++                          self._model.mark,
++                          create_path=hub.save_model)
++
++    @property
++    def snapshot_dir(self):
++        return check_path(self.root_path,
++                          hub.snapshot_folder_name,
++                          self._model.mark,
++                          create_path=hub.snapshot)
++
++    @property
++    def model_path(self):
++        """This property will be used only when checkpoint is to be saved.
+         Old name format: XXXX.model
+         New name example: recurrent.predictor(26.799_epochs)-train-1800
+         Where XXXX denotes self._model.model_name
+     """
+-    name = '{}.{}'.format(self._model.affix, self._model.model_name.lower())
+-    return os.path.join(self.ckpt_dir, name)
++        name = '{}.{}'.format(self._model.affix,
++                              self._model.model_name.lower())
++        return os.path.join(self.ckpt_dir, name)
+ 
+-  @property
+-  def gather_path(self):
+-    return os.path.join(check_path(self.root_path), hub.gather_file_name)
++    @property
++    def gather_path(self):
++        return os.path.join(check_path(self.root_path), hub.gather_file_name)
+ 
+-  @property
+-  def gather_summ_path(self):
+-    return os.path.join(check_path(self.root_path), hub.gather_summ_name)
++    @property
++    def gather_summ_path(self):
++        return os.path.join(check_path(self.root_path), hub.gather_summ_name)
+ 
+-  # endregion : Paths
++    # endregion : Paths
+ 
+-  # endregion : Properties
++    # endregion : Properties
+ 
+-  # region : Public Methods
++    # region : Public Methods
+ 
+-  def get_status_feed_dict(self, is_training):
+-    assert isinstance(is_training, bool)
+-    feed_dict = {self._is_training: is_training}
+-    return feed_dict
++    def get_status_feed_dict(self, is_training):
++        assert isinstance(is_training, bool)
++        feed_dict = {self._is_training: is_training}
++        return feed_dict
+ 
+-  def load(self):
+-    # TODO: when save_model option is turned off and the user want to
+-    #   try loading the exist model, set overwrite to False
+-    if not hub.save_model and hub.overwrite: return False, 0, None
+-    return load_checkpoint(self.ckpt_dir, self.session, self._saver)
++    def load(self):
++        # TODO: when save_model option is turned off and the user want to
++        #   try loading the exist model, set overwrite to False
++        if not hub.save_model and hub.overwrite: return False, 0, None
++        return load_checkpoint(self.ckpt_dir, self.session, self._saver)
+ 
+-  def save_model(self, rounds=None, suffix=None):
+-    """rounds is used only by trainer"""
+-    path = self.model_path
+-    if rounds is not None: path += '({:.3f}_rounds)'.format(rounds)
+-    if suffix is not None: path += '-{}'.format(suffix)
+-    save_checkpoint(path, self.session, self._saver, self._model.counter)
++    def save_model(self, rounds=None, suffix=None):
++        """rounds is used only by trainer"""
++        path = self.model_path
++        if rounds is not None: path += '({:.3f}_rounds)'.format(rounds)
++        if suffix is not None: path += '-{}'.format(suffix)
++        save_checkpoint(path, self.session, self._saver, self._model.counter)
+ 
+-  @with_graph
+-  def reset_saver(self):
+-    """This method will be used in some very special cased, e.g. for
++    @with_graph
++    def reset_saver(self):
++        """This method will be used in some very special cased, e.g. for
+        saving train_stats used in dynamic evaluation (krause, 2018)
+     """
+-    self._saver = tf.train.Saver(
+-      var_list=self._model.variable_to_save, max_to_keep=2)
+-
+-  @with_graph
+-  def launch_model(self, overwrite=False):
+-    if hub.suppress_logging: console.suppress_logging()
+-    # Before launch session, do some cleaning work
+-    if overwrite and hub.overwrite:
+-      paths = []
+-      if hub.summary: paths.append(self.log_dir)
+-      if hub.save_model: paths.append(self.ckpt_dir)
+-      if hub.snapshot: paths.append(self.snapshot_dir)
+-      if hub.export_note: paths.append(self.note_dir)
+-      clear_paths(paths)
+-    if hub.summary: self._check_bash()
+-
+-    # Launch session on self.graph
+-    console.show_status('Launching session ...')
+-    config = tf.ConfigProto()
+-    if hub.visible_gpu_id is not None:
+-      gpu_id = hub.visible_gpu_id
+-      if isinstance(gpu_id, int): gpu_id = '{}'.format(gpu_id)
+-      elif not isinstance(gpu_id, str): raise TypeError(
+-        '!! Visible GPU id provided must be an integer or a string')
+-      os.environ['CUDA_VISIBLE_DEVICES'] = gpu_id
+-    if not hub.allow_growth:
+-      value = hub.gpu_memory_fraction
+-      config.gpu_options.per_process_gpu_memory_fraction = value
+-    self._session = tf.Session(graph=self._graph, config=config)
+-    console.show_status('Session launched')
+-    # Prepare some tools
+-    self.reset_saver()
+-    if hub.summary or hub.hp_tuning:
+-      self._summary_writer = tf.summary.FileWriter(self.log_dir)
+-
+-    # Initialize all variables
+-    self._session.run(tf.global_variables_initializer())
+-    # Set init_val for pruner if necessary
+-    # .. if existed model is loaded, variables will be overwritten
+-    if hub.prune_on: context.pruner.set_init_val_lottery18()
+-
+-    # Try to load exist model
+-    load_flag, self._model.counter, self._model.rounds = self.load()
+-    # Sanity check
+-    if hub.prune_on and hub.pruning_iterations > 0:
+-      if not load_flag: raise AssertionError(
+-        '!! Model {} should be initialized'.format(self._model.mark))
+-
+-    if not load_flag:
+-      assert self._model.counter == 0
+-      # Add graph
+-      if hub.summary: self._summary_writer.add_graph(self._session.graph)
+-      # Write model description to file
+-      if hub.snapshot:
+-        description_path = os.path.join(self.snapshot_dir, 'description.txt')
+-        write_file(description_path, self._model.description)
+-      # Show status
+-      console.show_status('New model initiated')
+-    elif hub.branch_suffix not in [None, '']:
+-      hub.mark += hub.branch_suffix
+-      self._model.mark = hub.mark
+-      console.show_status('Checkpoint switched to branch `{}`'.format(hub.mark))
+-
+-    self._model.launched = True
+-    self.take_notes('Model launched')
+-
+-    # Handle structure detail here
+-    self._model.handle_structure_detail()
+-
+-    return load_flag
+-
+-  def shutdown(self):
+-    if hub.summary or hub.hp_tuning:
+-      self._summary_writer.close()
+-    self.session.close()
+-
+-  def write_summary(self, summary, step=None):
+-    if not hub.summary: return
+-    if step is None:
+-      assert context.trainer is not None
+-      if hub.epoch_as_step and context.trainer.total_rounds is not None:
+-        step = int(context.trainer.total_rounds * 1000)
+-      else: step = self._model.counter
+-    assert isinstance(self._summary_writer, tf.summary.FileWriter)
+-    self._summary_writer.add_summary(summary, step)
+-
+-  def save_plot(self, fig, filename):
+-    imtool.save_plt(fig, '{}/{}'.format(self.snapshot_dir, filename))
+-
+-  # endregion : Public Methods
+-
+-  # region : Public Methods for Note
+-
+-  # region : For TensorViewer
+-
+-  def take_down_scalars_and_tensors(self, scalars, tensors):
+-    assert isinstance(scalars, dict) and isinstance(tensors, dict)
+-    if hub.epoch_as_step and context.trainer.total_rounds is not None:
+-      step = int(context.trainer.total_rounds * 1000)
+-    else: step = self._model.counter
+-    self._note.take_down_scalars_and_tensors(step, scalars, tensors)
+-
+-  # endregion : For TensorViewer
+-
+-  # region : For SummaryViewer
+-
+-  def put_down_configs(self, th):
+-    assert isinstance(th, Config)
+-    self._note.put_down_configs(th.key_options)
+-
+-  def put_down_criterion(self, name, value):
+-    self._note.put_down_criterion(name, value)
+-
+-  def gather_to_summary(self):
+-    import pickle
+-    # Try to load note list into summaries
+-    file_path = self.gather_summ_path
+-    if os.path.exists(file_path):
+-      with open(file_path, 'rb') as f: summary = pickle.load(f)
+-      assert len(summary) > 0
+-    else: summary = []
+-    # Add note to list and save
+-    note = self._note.tensor_free if hub.gather_only_scalars else self._note
+-    summary.append(note)
+-    with open(file_path, 'wb') as f:
+-      pickle.dump(summary, f, pickle.HIGHEST_PROTOCOL)
+-    # Show status
+-    console.show_status('Note added to summaries ({} => {}) at `{}`'.format(
+-      len(summary) - 1, len(summary), file_path))
+-
+-  # endregion : For SummaryViewer
+-
+-  def take_notes(self, content, date_time=True, prompt=None):
+-    if not isinstance(content, str):
+-      raise TypeError('!! content must be a string')
+-    if isinstance(prompt, str):
+-      date_time = False
+-      content = '{} {}'.format(prompt, content)
+-    if date_time:
+-      time_str = time.strftime('[{}-{}-%d %H:%M:%S]'.format(
+-        time.strftime('%Y')[2:], time.strftime('%B')[:3]))
+-      content = '{} {}'.format(time_str, content)
+-
+-    self._note.write_line(content)
+-
+-  def show_notes(self):
+-    console.section('Notes')
+-    console.write_line(self._note.content)
+-
+-  def export_notes(self, filename='notes'):
+-    assert hub.export_note
+-    # Export .txt file
+-    file_path = '{}/{}.txt'.format(self.note_dir, filename)
+-    writer = open(file_path, 'a')
+-    writer.write('=' * 79 + '\n')
+-    writer.write(self._note.content + '\n')
+-    writer.close()
+-    # Export .note file
+-    file_path = '{}/{}.note'.format(self.note_dir, filename)
+-    self._note.save(file_path)
+-    console.show_status('Note exported to `{}`'.format(file_path))
+-
+-  def gather_notes(self, take_down_time=False):
+-    assert hub.gather_note
+-    # If gather file does not exist, create one
+-    with open(self.gather_path, 'a'): pass
+-    # Gather notes to .txt file
+-    line = self._note.content
+-    with open(self.gather_path, 'r+') as f:
+-      content = f.readlines()
+-      f.seek(0)
+-      f.truncate()
+-      if take_down_time:
+-        time_str = time.strftime('[{}-{}-%d %H:%M:%S]'.format(
+-          time.strftime('%Y')[2:], time.strftime('%B')[:3]))
+-        line = '[{}] {}'.format(time_str, line)
+-      f.write(line + '\n')
+-      f.write('-' * 79 + '\n')
+-      f.writelines(content)
+-      # TODO: find a way to update immediately after training is over
+-    # Gather notes to .summ file
+-    self.gather_to_summary()
+-
+-  # endregion : Public Methods for Note
+-
+-  # region : Private Methods
+-
+-  def _init_graph(self, graph):
+-    if graph is not None:
+-      assert isinstance(graph, tf.Graph)
+-      self._graph = graph
+-    else: self._graph = tf.Graph()
+-    # Initialize graph variables
+-    with self.graph.as_default():
+-      self._is_training = tf.placeholder(
+-        dtype=tf.bool, name=pedia.is_training)
+-      tf.add_to_collection(pedia.is_training, self._is_training)
+-
+-    # TODO
+-    # When linking batch-norm layer (and dropout layer),
+-    #   this placeholder will be got from default graph
+-    # self._graph.is_training = self._is_training
+-    # assert context.current_graph is not None
+-    if not hub.suppress_current_graph: context.current_graph = self._graph
+-    # tfr.current_graph = self._graph
+-
+-  def _check_bash(self):
+-    command = 'tensorboard --logdir=./logs/ --port={}'.format(hub.tb_port)
+-    file_path = check_path(self.root_path, create_path=True)
+-    file_names = ['win_launch_tensorboard.bat', 'unix_launch_tensorboard.sh']
+-    for file_name in file_names:
+-      path = os.path.join(file_path, file_name)
+-      if not os.path.exists(path):
+-        f = open(path, 'w')
+-        f.write(command)
+-        f.close()
+-
+-  # endregion : Private Methods
++        self._saver = tf.train.Saver(var_list=self._model.variable_to_save,
++                                     max_to_keep=2)
++
++    @with_graph
++    def launch_model(self, overwrite=False):
++        if hub.suppress_logging: console.suppress_logging()
++        # Before launch session, do some cleaning work
++        if overwrite and hub.overwrite:
++            paths = []
++            if hub.summary: paths.append(self.log_dir)
++            if hub.save_model: paths.append(self.ckpt_dir)
++            if hub.snapshot: paths.append(self.snapshot_dir)
++            if hub.export_note: paths.append(self.note_dir)
++            clear_paths(paths)
++        if hub.summary: self._check_bash()
++
++        # Launch session on self.graph
++        console.show_status('Launching session ...')
++        config = tf.ConfigProto()
++        if hub.visible_gpu_id is not None:
++            gpu_id = hub.visible_gpu_id
++            if isinstance(gpu_id, int): gpu_id = '{}'.format(gpu_id)
++            elif not isinstance(gpu_id, str):
++                raise TypeError(
++                    '!! Visible GPU id provided must be an integer or a string'
++                )
++            os.environ['CUDA_VISIBLE_DEVICES'] = gpu_id
++        if not hub.allow_growth:
++            value = hub.gpu_memory_fraction
++            config.gpu_options.per_process_gpu_memory_fraction = value
++        self._session = tf.Session(graph=self._graph, config=config)
++        console.show_status('Session launched')
++        # Prepare some tools
++        self.reset_saver()
++        if hub.summary or hub.hp_tuning:
++            self._summary_writer = tf.summary.FileWriter(self.log_dir)
++
++        # Initialize all variables
++        self._session.run(tf.global_variables_initializer())
++        # Set init_val for pruner if necessary
++        # .. if existed model is loaded, variables will be overwritten
++        if hub.prune_on: context.pruner.set_init_val_lottery18()
++
++        # Try to load exist model
++        load_flag, self._model.counter, self._model.rounds = self.load()
++        # Sanity check
++        if hub.prune_on and hub.pruning_iterations > 0:
++            if not load_flag:
++                raise AssertionError(
++                    '!! Model {} should be initialized'.format(
++                        self._model.mark))
++
++        if not load_flag:
++            assert self._model.counter == 0
++            # Add graph
++            if hub.summary: self._summary_writer.add_graph(self._session.graph)
++            # Write model description to file
++            if hub.snapshot:
++                description_path = os.path.join(self.snapshot_dir,
++                                                'description.txt')
++                write_file(description_path, self._model.description)
++            # Show status
++            console.show_status('New model initiated')
++        elif hub.branch_suffix not in [None, '']:
++            hub.mark += hub.branch_suffix
++            self._model.mark = hub.mark
++            console.show_status('Checkpoint switched to branch `{}`'.format(
++                hub.mark))
++
++        self._model.launched = True
++        self.take_notes('Model launched')
++
++        # Handle structure detail here
++        self._model.handle_structure_detail()
++
++        return load_flag
++
++    def shutdown(self):
++        if hub.summary or hub.hp_tuning:
++            self._summary_writer.close()
++        self.session.close()
++
++    def write_summary(self, summary, step=None):
++        if not hub.summary: return
++        if step is None:
++            assert context.trainer is not None
++            if hub.epoch_as_step and context.trainer.total_rounds is not None:
++                step = int(context.trainer.total_rounds * 1000)
++            else:
++                step = self._model.counter
++        assert isinstance(self._summary_writer, tf.summary.FileWriter)
++        self._summary_writer.add_summary(summary, step)
++
++    def save_plot(self, fig, filename):
++        imtool.save_plt(fig, '{}/{}'.format(self.snapshot_dir, filename))
++
++    # endregion : Public Methods
++
++    # region : Public Methods for Note
++
++    # region : For TensorViewer
++
++    def take_down_scalars_and_tensors(self, scalars, tensors):
++        assert isinstance(scalars, dict) and isinstance(tensors, dict)
++        if hub.epoch_as_step and context.trainer.total_rounds is not None:
++            step = int(context.trainer.total_rounds * 1000)
++        else:
++            step = self._model.counter
++        self._note.take_down_scalars_and_tensors(step, scalars, tensors)
++
++    # endregion : For TensorViewer
++
++    # region : For SummaryViewer
++
++    def put_down_configs(self, th):
++        assert isinstance(th, Config)
++        self._note.put_down_configs(th.key_options)
++
++    def put_down_criterion(self, name, value):
++        self._note.put_down_criterion(name, value)
++
++    def gather_to_summary(self):
++        import pickle
++        # Try to load note list into summaries
++        file_path = self.gather_summ_path
++        if os.path.exists(file_path):
++            with open(file_path, 'rb') as f:
++                summary = pickle.load(f)
++            assert len(summary) > 0
++        else:
++            summary = []
++        # Add note to list and save
++        note = self._note.tensor_free if hub.gather_only_scalars else self._note
++        summary.append(note)
++        with open(file_path, 'wb') as f:
++            pickle.dump(summary, f, pickle.HIGHEST_PROTOCOL)
++        # Show status
++        console.show_status(
++            'Note added to summaries ({} => {}) at `{}`'.format(
++                len(summary) - 1, len(summary), file_path))
++
++    # endregion : For SummaryViewer
++
++    def take_notes(self, content, date_time=True, prompt=None):
++        if not isinstance(content, str):
++            raise TypeError('!! content must be a string')
++        if isinstance(prompt, str):
++            date_time = False
++            content = '{} {}'.format(prompt, content)
++        if date_time:
++            time_str = time.strftime('[{}-{}-%d %H:%M:%S]'.format(
++                time.strftime('%Y')[2:],
++                time.strftime('%B')[:3]))
++            content = '{} {}'.format(time_str, content)
++
++        self._note.write_line(content)
++
++    def show_notes(self):
++        console.section('Notes')
++        console.write_line(self._note.content)
++
++    def export_notes(self, filename='notes'):
++        assert hub.export_note
++        # Export .txt file
++        file_path = '{}/{}.txt'.format(self.note_dir, filename)
++        writer = open(file_path, 'a')
++        writer.write('=' * 79 + '\n')
++        writer.write(self._note.content + '\n')
++        writer.close()
++        # Export .note file
++        file_path = '{}/{}.note'.format(self.note_dir, filename)
++        self._note.save(file_path)
++        console.show_status('Note exported to `{}`'.format(file_path))
++
++    def gather_notes(self, take_down_time=False):
++        assert hub.gather_note
++        # If gather file does not exist, create one
++        with open(self.gather_path, 'a'):
++            pass
++        # Gather notes to .txt file
++        line = self._note.content
++        with open(self.gather_path, 'r+') as f:
++            content = f.readlines()
++            f.seek(0)
++            f.truncate()
++            if take_down_time:
++                time_str = time.strftime('[{}-{}-%d %H:%M:%S]'.format(
++                    time.strftime('%Y')[2:],
++                    time.strftime('%B')[:3]))
++                line = '[{}] {}'.format(time_str, line)
++            f.write(line + '\n')
++            f.write('-' * 79 + '\n')
++            f.writelines(content)
++            # TODO: find a way to update immediately after training is over
++        # Gather notes to .summ file
++        self.gather_to_summary()
++
++    # endregion : Public Methods for Note
++
++    # region : Private Methods
++
++    def _init_graph(self, graph):
++        if graph is not None:
++            assert isinstance(graph, tf.Graph)
++            self._graph = graph
++        else:
++            self._graph = tf.Graph()
++        # Initialize graph variables
++        with self.graph.as_default():
++            self._is_training = tf.placeholder(dtype=tf.bool,
++                                               name=pedia.is_training)
++            tf.add_to_collection(pedia.is_training, self._is_training)
++
++        # TODO
++        # When linking batch-norm layer (and dropout layer),
++        #   this placeholder will be got from default graph
++        # self._graph.is_training = self._is_training
++        # assert context.current_graph is not None
++        if not hub.suppress_current_graph: context.current_graph = self._graph
++        # tfr.current_graph = self._graph
++
++    def _check_bash(self):
++        command = 'tensorboard --logdir=./logs/ --port={}'.format(hub.tb_port)
++        file_path = check_path(self.root_path, create_path=True)
++        file_names = [
++            'win_launch_tensorboard.bat', 'unix_launch_tensorboard.sh'
++        ]
++        for file_name in file_names:
++            path = os.path.join(file_path, file_name)
++            if not os.path.exists(path):
++                f = open(path, 'w')
++                f.write(command)
++                f.close()
++
++    # endregion : Private Methods
+diff --git a/third_party_libraries/gam_rhn/tframe/data/sequences/finance/fi2010.py b/third_party_libraries/gam_rhn/tframe/data/sequences/finance/fi2010.py
+index 370b3f4..8bc71dd 100644
+--- a/third_party_libraries/gam_rhn/tframe/data/sequences/finance/fi2010.py
++++ b/third_party_libraries/gam_rhn/tframe/data/sequences/finance/fi2010.py
+@@ -3,7 +3,8 @@ from __future__ import division
+ from __future__ import print_function
+ 
+ import os
+-import tensorflow as tf
++import tensorflow.compat.v1 as tf
++tf.disable_v2_behavior()
+ 
+ import math
+ import numpy as np
+@@ -51,26 +52,27 @@ class FI2010(DataAgent):
+     DATA_NAME = "FI-2010"
+     DATA_URL = "https://etsin.fairdata.fi/api/dl?cr_id=73eb48d7-4dbc-4a10-a52a-da745b47a649&file_id=5b32ac028ab4d130110888f19872320"
+     DAY_LENGTH = {
+-        True: [47342, 45114, 33720, 43252, 41171, 47253, 45099, 59973, 57951, 37250],
+-        False: [39512, 38397, 28535, 37023, 34785, 39152, 37346, 55478, 52172, 31937],
++        True:
++        [47342, 45114, 33720, 43252, 41171, 47253, 45099, 59973, 57951, 37250],
++        False:
++        [39512, 38397, 28535, 37023, 34785, 39152, 37346, 55478, 52172, 31937],
+     }
+     STOCK_IDs = ["KESBV", "OUT1V", "SAMPO", "RTRKS", "WRT1V"]
+     LEN_PER_DAY_PER_STOCK = "LEN_PER_DAY_PER_STOCK"
+ 
+     @classmethod
+-    def load(
+-        cls,
+-        data_dir,
+-        auction=False,
+-        norm_type="zscore",
+-        setup=2,
+-        val_size=None,
+-        horizon=100,
+-        **kwargs
+-    ):
+-        should_apply_norm = any(
+-            ["use_log" not in th.developer_code, "force_norm" in th.developer_code]
+-        )
++    def load(cls,
++             data_dir,
++             auction=False,
++             norm_type="zscore",
++             setup=2,
++             val_size=None,
++             horizon=100,
++             **kwargs):
++        should_apply_norm = any([
++            "use_log" not in th.developer_code,
++            "force_norm" in th.developer_code
++        ])
+         # Sanity check
+         assert setup in [1, 2]
+         # Load raw LOB data
+@@ -82,13 +84,16 @@ class FI2010(DataAgent):
+ 
+         home = str(Path.home())
+ 
+-        file_name = "model_name=two_model&WL=15&pt=1&sl=1&min_ret=0.0021&vbs=240&head=0&skip=0&fraction=1&vol_max=0.0022&vol_min=0.00210001&filter_type=none&cm_vol_mod=0&sample_weights=on&frac_diff=off&prices_type=orderbook&ntb=True&tslbc=True.h5"
++        file_name = "1y7dtrfu_gam_rhn.h5"
+         path = home + "/ProdigyAI/data/preprocessed/" + file_name
+         h5f = h5py.File(path, "r")
+         X = h5f["X"][:]
+         y = h5f["y"][:]
+         h5f.close()
+ 
++        import pdb
++        pdb.set_trace()
++
+         X_zeros = np.zeros((X.shape))
+         X = np.concatenate((X, X_zeros), axis=1)
+         y = np.add(y, 1)  # go from -1,0,1 to 0,1,2
+@@ -99,7 +104,7 @@ class FI2010(DataAgent):
+         lob_set.data_dict["raw_data"] = [X]
+ 
+         def round_down(n, decimals=0):
+-            multiplier = 10 ** decimals
++            multiplier = 10**decimals
+             return math.floor(n * multiplier) / multiplier
+ 
+         number = round_down(len(y) / 10)
+@@ -118,33 +123,34 @@ class FI2010(DataAgent):
+ 
+         if should_apply_norm:
+             train_set, test_set = cls._apply_normalization(
+-                train_set, test_set, norm_type
+-            )
+-        if kwargs.get("validate_setup2") and setup == 2 and norm_type == "zscore":
++                train_set, test_set, norm_type)
++        if kwargs.get(
++                "validate_setup2") and setup == 2 and norm_type == "zscore":
+             cls._validate_setup2(data_dir, auction, train_set)
+ 
+         return train_set, test_set
+ 
+     @classmethod
+     def extract_seq_set(cls, raw_set, horizon):
+-        assert isinstance(raw_set, SequenceSet) and horizon in [10, 20, 30, 50, 100]
++        assert isinstance(raw_set,
++                          SequenceSet) and horizon in [10, 20, 30, 50, 100]
+         seq_set = SequenceSet(
+-            features=[array[:, :40] for array in raw_set.data_dict["raw_data"]],
++            features=[
++                array[:, :40] for array in raw_set.data_dict["raw_data"]
++            ],
+             targets=raw_set.data_dict[horizon],
+             name=raw_set.name,
+         )
+         return seq_set
+ 
+     @classmethod
+-    def load_as_tframe_data(
+-        cls,
+-        data_dir,
+-        auction=False,
+-        norm_type="zscore",
+-        setup=None,
+-        file_slices=None,
+-        **kwargs
+-    ):
++    def load_as_tframe_data(cls,
++                            data_dir,
++                            auction=False,
++                            norm_type="zscore",
++                            setup=None,
++                            file_slices=None,
++                            **kwargs):
+         # Confirm type of normalization
+         nt_lower = norm_type.lower()
+         # 'Zscore' for directory names and 'ZScore' for file names
+@@ -155,19 +161,21 @@ class FI2010(DataAgent):
+         elif nt_lower in ["3", "decpre"]:
+             type_id, norm_type = 3, "DecPre"
+         else:
+-            raise KeyError("Unknown type of normalization `{}`".format(norm_type))
++            raise KeyError(
++                "Unknown type of normalization `{}`".format(norm_type))
+         # Load directly if dataset exists
+         data_path = cls._get_data_path(data_dir, auction, norm_type, setup)
+         if os.path.exists(data_path):
+             return SequenceSet.load(data_path)
+         # If dataset does not exist, create from raw data
+-        console.show_status(
+-            "Creating `{}` from raw data ...".format(os.path.basename(data_path))
+-        )
++        console.show_status("Creating `{}` from raw data ...".format(
++            os.path.basename(data_path)))
+         # Load raw data
+-        features, targets = cls._load_raw_data(
+-            data_dir, auction, norm_type, type_id, file_slices=file_slices
+-        )
++        features, targets = cls._load_raw_data(data_dir,
++                                               auction,
++                                               norm_type,
++                                               type_id,
++                                               file_slices=file_slices)
+ 
+         # Wrap raw data into tframe Sequence set
+         data_dict = {"raw_data": features}
+@@ -190,8 +198,7 @@ class FI2010(DataAgent):
+         len_per_day_per_stock = lob_set[cls.LEN_PER_DAY_PER_STOCK]
+         assert len(len_per_day_per_stock) == lob_set.size
+         for stock, (k, lob, move) in enumerate(
+-            zip(k_list, lob_set.features, lob_set.targets)
+-        ):
++                zip(k_list, lob_set.features, lob_set.targets)):
+             lengths = len_per_day_per_stock[stock]
+             L = sum(lengths[:k])
+             if k != 0:
+@@ -202,26 +209,27 @@ class FI2010(DataAgent):
+                 second_targets.append(move[L:])
+         # Wrap data sets and return
+         first_properties = {
+-            cls.LEN_PER_DAY_PER_STOCK: [
+-                s[:k] for k, s in zip(k_list, len_per_day_per_stock) if k != 0
+-            ]
++            cls.LEN_PER_DAY_PER_STOCK:
++            [s[:k] for k, s in zip(k_list, len_per_day_per_stock) if k != 0]
+         }
+-        first_set = SequenceSet(
+-            first_features, first_targets, name=first_name, **first_properties
+-        )
++        first_set = SequenceSet(first_features,
++                                first_targets,
++                                name=first_name,
++                                **first_properties)
+         second_properties = {
+             cls.LEN_PER_DAY_PER_STOCK: [
+-                s[k:] for k, s in zip(k_list, len_per_day_per_stock) if k != len(s)
++                s[k:] for k, s in zip(k_list, len_per_day_per_stock)
++                if k != len(s)
+             ]
+         }
+-        second_set = SequenceSet(
+-            second_features, second_targets, name=second_name, **second_properties
+-        )
++        second_set = SequenceSet(second_features,
++                                 second_targets,
++                                 name=second_name,
++                                 **second_properties)
+ 
+         for seq_set in [first_set, second_set]:
+             assert np.sum(seq_set.structure) == np.sum(
+-                np.concatenate(seq_set[cls.LEN_PER_DAY_PER_STOCK])
+-            )
++                np.concatenate(seq_set[cls.LEN_PER_DAY_PER_STOCK]))
+ 
+         return first_set, second_set
+ 
+@@ -267,7 +275,9 @@ class FI2010(DataAgent):
+         for j, lobs in enumerate(lob_list):
+             # Find cliff indices
+             max_delta = 300 if auction else 200
+-            indices = cls._get_cliff_indices(lobs, auction, max_delta=max_delta)
++            indices = cls._get_cliff_indices(lobs,
++                                             auction,
++                                             max_delta=max_delta)
+             # Fill LOBs
+             from_i = 0
+             for stock in range(5):
+@@ -285,15 +295,13 @@ class FI2010(DataAgent):
+         }
+         data_dict["raw_data"] = [np.concatenate(lb_list) for lb_list in LOBs]
+         # Initiate a new seq_set
+-        seq_set = SequenceSet(
+-            data_dict=data_dict,
+-            name="FI-2010-LOBs",
+-            **{
+-                cls.LEN_PER_DAY_PER_STOCK: cls._get_len_per_day_per_stock(
+-                    data_dir, auction
+-                )
+-            }
+-        )
++        seq_set = SequenceSet(data_dict=data_dict,
++                              name="FI-2010-LOBs",
++                              **{
++                                  cls.LEN_PER_DAY_PER_STOCK:
++                                  cls._get_len_per_day_per_stock(
++                                      data_dir, auction)
++                              })
+         # Sanity check (394337)
+         assert sum(seq_set.structure) == sum(cls.DAY_LENGTH[auction])
+         # Save and return
+@@ -330,7 +338,7 @@ class FI2010(DataAgent):
+         # Initialize features
+         features = lob_set.data_dict["raw_data"]
+         # .. max_level
+-        features = [array[:, : 4 * max_level] for array in features]
++        features = [array[:, :4 * max_level] for array in features]
+         # .. check developer code
+         if "use_log" in th.developer_code:
+             for x in features:
+@@ -339,7 +347,8 @@ class FI2010(DataAgent):
+         # .. volume only
+         if th.volume_only:
+             # features = [array[:, 1::2] for array in features] # For original Data
+-            features = [array[:, 0:20] for array in features]  # For crypto data
++            features = [array[:, 0:20]
++                        for array in features]  # For crypto data
+         # Set features back
+         lob_set.features = features
+         # Initialize targets
+@@ -373,9 +382,9 @@ class FI2010(DataAgent):
+         indices = np.where(delta > max_delta)[0] + shift - 1
+         if auction:
+             indices = [
+-                i
+-                for i in indices
+-                if np.abs(p[min(i + 100, len(p) - 1)] - p[i - 100]) > max_delta
++                i for i in indices
++                if np.abs(p[min(i + 100,
++                                len(p) - 1)] - p[i - 100]) > max_delta
+             ]
+         if len(indices) != 4:
+             raise AssertionError
+@@ -397,14 +406,20 @@ class FI2010(DataAgent):
+             max_delta = 0.4 if auction else 0.1
+             indices = cls._get_cliff_indices(lobs, auction, max_delta)
+             indices = [-1] + indices + [len(lobs) - 1]
+-            for i, L in enumerate([indices[j + 1] - indices[j] for j in range(5)]):
++            for i, L in enumerate(
++                [indices[j + 1] - indices[j] for j in range(5)]):
+                 lengths[i].append(L)
+         # Sanity check
+         assert np.sum(lengths) == sum(cls.DAY_LENGTH[auction])
+         return lengths
+ 
+     @classmethod
+-    def _load_raw_data(cls, data_dir, auction, norm_type, type_id, file_slices=None):
++    def _load_raw_data(cls,
++                       data_dir,
++                       auction,
++                       norm_type,
++                       type_id,
++                       file_slices=None):
+         assert isinstance(auction, bool)
+         if not isinstance(norm_type, str):
+             norm_type = str(norm_type)
+@@ -414,37 +429,34 @@ class FI2010(DataAgent):
+             auction_dir_name = "No" + auction_dir_name
+         # Get directory name for training and test set
+         norm_dir_name = "{}.{}_{}".format(type_id, auction_dir_name, norm_type)
+-        path = os.path.join(
+-            data_dir, "BenchmarkDatasets", auction_dir_name, norm_dir_name
+-        )
++        path = os.path.join(data_dir, "BenchmarkDatasets", auction_dir_name,
++                            norm_dir_name)
+         training_set_path = os.path.join(
+-            path, "{}_{}_Training".format(auction_dir_name, norm_type)
+-        )
++            path, "{}_{}_Training".format(auction_dir_name, norm_type))
+         test_set_path = os.path.join(
+-            path, "{}_{}_Testing".format(auction_dir_name, norm_type)
+-        )
++            path, "{}_{}_Testing".format(auction_dir_name, norm_type))
+ 
+         # Check training and test path
+-        if any(
+-            [not os.path.exists(training_set_path), not os.path.exists(test_set_path)]
+-        ):
++        if any([
++                not os.path.exists(training_set_path),
++                not os.path.exists(test_set_path)
++        ]):
+             import zipfile
+ 
+             zip_file_name = "BenchmarkDatasets.zip"
+             zip_file_path = cls._check_raw_data(data_dir, zip_file_name)
+             console.show_status(
+                 "Extracting {} (this may need several minutes) ...".format(
+-                    zip_file_name
+-                )
+-            )
++                    zip_file_name))
+             zipfile.ZipFile(zip_file_path, "r").extractall(data_dir)
+             console.show_status("{} extracted successfully.".format(data_dir))
+-        assert all([os.path.exists(training_set_path), os.path.exists(test_set_path)])
++        assert all(
++            [os.path.exists(training_set_path),
++             os.path.exists(test_set_path)])
+ 
+         # Read data and return
+-        return cls._read_train_test(
+-            training_set_path, test_set_path, auction, norm_type, file_slices
+-        )
++        return cls._read_train_test(training_set_path, test_set_path, auction,
++                                    norm_type, file_slices)
+ 
+     @classmethod
+     def _get_data_file_path_list(cls, dir_name, training, auction, norm_type):
+@@ -454,8 +466,8 @@ class FI2010(DataAgent):
+         prefix = "Train" if training else "Test"
+         file_path_list = [
+             os.path.join(
+-                dir_name, "{}_Dst_{}_{}_CF_{}.txt".format(prefix, auction, norm_type, i)
+-            )
++                dir_name,
++                "{}_Dst_{}_{}_CF_{}.txt".format(prefix, auction, norm_type, i))
+             for i in range(1, 10)
+         ]
+         # Make sure each file exists
+@@ -465,13 +477,18 @@ class FI2010(DataAgent):
+         return file_path_list
+ 
+     @classmethod
+-    def _read_train_test(
+-        cls, train_dir, test_dir, auction, norm_type, file_slices=None
+-    ):
++    def _read_train_test(cls,
++                         train_dir,
++                         test_dir,
++                         auction,
++                         norm_type,
++                         file_slices=None):
+         """This method is better used for reading DecPre data for further restoring
+     """
+-        train_paths = cls._get_data_file_path_list(train_dir, True, auction, norm_type)
+-        test_paths = cls._get_data_file_path_list(test_dir, False, auction, norm_type)
++        train_paths = cls._get_data_file_path_list(train_dir, True, auction,
++                                                   norm_type)
++        test_paths = cls._get_data_file_path_list(test_dir, False, auction,
++                                                  norm_type)
+         # Read data from .txt files
+         features, targets = [], {}
+         horizons = [10, 20, 30, 50, 100]
+@@ -490,9 +507,8 @@ class FI2010(DataAgent):
+             features.append([])
+             for h in horizons:
+                 targets[h].append([])
+-            console.show_status(
+-                "Reading data from `{}` ...".format(os.path.basename(path))
+-            )
++            console.show_status("Reading data from `{}` ...".format(
++                os.path.basename(path)))
+             with open(path, "r") as f:
+                 lines = f.readlines()
+             # Sanity check
+@@ -513,10 +529,10 @@ class FI2010(DataAgent):
+             # Stack list
+             features[-1] = np.stack(features[-1], axis=0)
+             for k, h in enumerate(horizons):
+-                targets[h][-1] = (
+-                    np.array(np.stack(targets[h][-1], axis=0), dtype=np.int64) - 1
+-                )
+-            console.show_status("Successfully read {} event blocks".format(total))
++                targets[h][-1] = (np.array(np.stack(targets[h][-1], axis=0),
++                                           dtype=np.int64) - 1)
++            console.show_status(
++                "Successfully read {} event blocks".format(total))
+         # Sanity check and return
+         total = sum([len(x) for x in features])
+         console.show_status("Totally {} event blocks read.".format(total))
+@@ -545,7 +561,8 @@ class FI2010(DataAgent):
+             lob_targets = np.concatenate(data_dict[h])
+             zs_targets = np.concatenate(zscore_set.data_dict[h])
+             if not np.equal(lob_targets, zs_targets).all():
+-                raise AssertionError("Targets not equal when horizon = {}".format(h))
++                raise AssertionError(
++                    "Targets not equal when horizon = {}".format(h))
+         console.show_info("Targets are all correct.")
+ 
+     @classmethod
+@@ -570,8 +587,8 @@ class FI2010(DataAgent):
+         )
+         assert isinstance(zscore_set, SequenceSet)
+         zs_all = np.concatenate(
+-            [array[:, :40] for array in zscore_set.data_dict["raw_data"]], axis=0
+-        )
++            [array[:, :40] for array in zscore_set.data_dict["raw_data"]],
++            axis=0)
+         # Load min-max data
+         mm_set = cls.load_as_tframe_data(
+             data_dir,
+@@ -581,8 +598,7 @@ class FI2010(DataAgent):
+             file_slices=(slice(8, 9), slice(8, 9)),
+         )
+         mm_all = np.concatenate(
+-            [array[:, :40] for array in mm_set.data_dict["raw_data"]], axis=0
+-        )
++            [array[:, :40] for array in mm_set.data_dict["raw_data"]], axis=0)
+         # Generate lob -> zscore data for validation
+         lob_all = np.concatenate(lob_list, axis=0)
+         lob_zs_all = (lob_all - mu) / sigma
+@@ -608,9 +624,7 @@ class FI2010(DataAgent):
+             if zs_mm_err > 0.1:
+                 raise AssertionError(
+                     "In LOB[{}, {}] val_zs = {} while val_mm = {}".format(
+-                        i, j, val_zs, val_mm
+-                    )
+-                )
++                        i, j, val_zs, val_mm))
+             correct_val = val_mm
+             if not P_errs:
+                 correct_val = np.round(val_mm)
+@@ -618,18 +632,14 @@ class FI2010(DataAgent):
+                 if cor_mm_err > 1e-3:
+                     raise AssertionError(
+                         "In LOB[{}, {}] cor_val = {} while val_mm = {}".format(
+-                            i, j, cor_mm_err, val_mm
+-                        )
+-                    )
++                            i, j, cor_mm_err, val_mm))
+             # Correct value in lob_all
+             lob_all[i, j] = correct_val
+             bar.show(i)
+         # Show status after correction
+         console.show_status(
+             "{} price errors and {} volume errors have been corrected".format(
+-                P_errs, V_errs
+-            )
+-        )
++                P_errs, V_errs))
+         new_lob_list = []
+         for s in [len(array) for array in lob_list]:
+             day_block, lob_all = np.split(lob_all, [s])
+@@ -642,11 +652,11 @@ class FI2010(DataAgent):
+     def _get_data_path(cls, data_dir, auction, norm_type=None, setup=None):
+         assert isinstance(auction, bool)
+         if all([norm_type is None, setup is None]):
+-            file_name = "FI-2010-{}Auction-LOBs.tfds".format("" if auction else "No")
++            file_name = "FI-2010-{}Auction-LOBs.tfds".format(
++                "" if auction else "No")
+         else:
+             file_name = "FI-2010-{}Auction-{}-Setup{}.tfds".format(
+-                "" if auction else "No", norm_type, setup
+-            )
++                "" if auction else "No", norm_type, setup)
+         return os.path.join(data_dir, file_name)
+ 
+     # endregion : Private Methods
+@@ -662,7 +672,8 @@ class FI2010(DataAgent):
+     # region : RNN batch generator for Sequence Set
+ 
+     @staticmethod
+-    def rnn_batch_generator(data_set, batch_size, num_steps, is_training, round_len):
++    def rnn_batch_generator(data_set, batch_size, num_steps, is_training,
++                            round_len):
+         """Generated epoch batches are guaranteed to cover all sequences"""
+         assert isinstance(data_set, SequenceSet) and is_training
+         L = int(sum(data_set.structure) / batch_size)
+@@ -673,22 +684,25 @@ class FI2010(DataAgent):
+         num_sequences = wise_man.apportion(data_set.structure, batch_size)
+         # Generate feature list and target list
+         features, targets = [], []
+-        for num, x, y in zip(num_sequences, data_set.features, data_set.targets):
++        for num, x, y in zip(num_sequences, data_set.features,
++                             data_set.targets):
+             # Find starts for each sequence to sample
+             starts = wise_man.spread(len(x), num, L, rad)
+             # Sanity check
+             assert len(starts) == num
+             # Put the sub-sequences into corresponding lists
+             for s in starts:
+-                features.append(x[s : s + L])
+-                targets.append(y[s : s + L])
++                features.append(x[s:s + L])
++                targets.append(y[s:s + L])
+         # Stack features and targets
+         features, targets = np.stack(features), np.stack(targets)
+         data_set = DataSet(features, targets, is_rnn_input=True)
+         assert data_set.size == batch_size
+         # Generate RNN batches using DataSet.gen_rnn_batches
+         counter = 0
+-        for batch in data_set.gen_rnn_batches(batch_size, num_steps, is_training=True):
++        for batch in data_set.gen_rnn_batches(batch_size,
++                                              num_steps,
++                                              is_training=True):
+             yield batch
+             counter += 1
+ 
+@@ -696,8 +710,7 @@ class FI2010(DataAgent):
+         if counter != round_len:
+             raise AssertionError(
+                 "!! counter = {} while round_len = {}. (batch_size = {}, num_steps={})"
+-                "".format(counter, round_len, batch_size, num_steps)
+-            )
++                "".format(counter, round_len, batch_size, num_steps))
+ 
+     # endregion : RNN batch generator for Sequence Set
+ 
+@@ -708,7 +721,8 @@ class FI2010(DataAgent):
+         from tframe.trainers.trainer import Trainer
+ 
+         # Sanity check
+-        assert isinstance(trainer, Trainer) and isinstance(dataset, SequenceSet)
++        assert isinstance(trainer, Trainer) and isinstance(
++            dataset, SequenceSet)
+         model = trainer.model
+         assert isinstance(model, Classifier)
+ 
+@@ -724,11 +738,9 @@ class FI2010(DataAgent):
+         label_pred = np.concatenate(label_pred)
+         table, F1 = FI2010._get_table_and_F1(label_pred, title="All Stocks, ")
+ 
+-        content = "F1 Scores: {}".format(
+-            ", ".join(
+-                ["[{}] {:.2f}".format(i + 1, score) for i, score in enumerate(F1s)]
+-            )
+-        )
++        content = "F1 Scores: {}".format(", ".join([
++            "[{}] {:.2f}".format(i + 1, score) for i, score in enumerate(F1s)
++        ]))
+         return content + table.content
+ 
+     @staticmethod
+@@ -739,22 +751,22 @@ class FI2010(DataAgent):
+         else:
+             model = entity
+         # Sanity check
+-        assert isinstance(model, Classifier) and isinstance(seq_set, SequenceSet)
++        assert isinstance(model, Classifier) and isinstance(
++            seq_set, SequenceSet)
+         # Get table and F1 score for each stock
+         label_pred = FI2010._get_label_pred(model, seq_set)
+         ### PRODIGY AI HOKUS POKUS START
+         label_pred[0] = label_pred[0].reshape((len(label_pred[0]), 1))
+         label_pred[0] = np.round(label_pred[0])
+-        seq_set.data_dict["targets"][0] = seq_set.data_dict["targets"][0].reshape(
+-            (len(seq_set.data_dict["targets"][0]), 1)
+-        )
++        seq_set.data_dict["targets"][0] = seq_set.data_dict["targets"][
++            0].reshape((len(seq_set.data_dict["targets"][0]), 1))
+         label_pred[0] = np.concatenate(
+-            (label_pred[0], seq_set.data_dict["targets"][0]), axis=1
+-        )
++            (label_pred[0], seq_set.data_dict["targets"][0]), axis=1)
+         ### PRODIGY AI HOKUS POKUS END
+ 
+         for i, lp in enumerate(label_pred):
+-            table, _ = FI2010._get_table_and_F1(lp, title="[{}] ".format(i + 1))
++            table, _ = FI2010._get_table_and_F1(lp,
++                                                title="[{}] ".format(i + 1))
+             table.print_buffer()
+             if is_training:
+                 model.agent.take_notes(table.content)
+@@ -787,9 +799,10 @@ class FI2010(DataAgent):
+         assert isinstance(model, Classifier)
+         # Get predictions and labels
+         label_pred_tensor = model.key_metric.quantity_definition.quantities
+-        label_pred = model.evaluate(
+-            label_pred_tensor, dataset, batch_size=batch_size, verbose=True
+-        )
++        label_pred = model.evaluate(label_pred_tensor,
++                                    dataset,
++                                    batch_size=batch_size,
++                                    verbose=True)
+         console.show_status("Evaluation completed")
+         table, F1 = cls._get_table_and_F1(label_pred)
+         return table, F1
+@@ -800,7 +813,9 @@ class FI2010(DataAgent):
+         # assert isinstance(label_pred, np.ndarray) and label_pred.shape[-1] == 2
+         # Initialize table
+         movements = ["Upward", "Stationary", "Downward"]
+-        header = ["Movement  ", "Accuracy %", "Precision %", "Recall %", "   F1 %"]
++        header = [
++            "Movement  ", "Accuracy %", "Precision %", "Recall %", "   F1 %"
++        ]
+         widths = [len(h) for h in header]
+         table = Table(*widths, tab=3, margin=1, buffered=True)
+         table.specify_format(*["{:.2f}" for _ in header], align="lrrrr")
+@@ -811,7 +826,8 @@ class FI2010(DataAgent):
+         precisions, recalls, F1s = [], [], []
+         x = label_pred
+         for c_thingo, move in enumerate(movements):
+-            col, row = x[x[:, 0] == c_thingo][:, 1], x[x[:, 1] == c_thingo][:, 0]
++            col, row = x[x[:, 0] == c_thingo][:, 1], x[x[:, 1] == c_thingo][:,
++                                                                            0]
+             TP = len(col[col == c_thingo])
+             FP, FN = len(row) - TP, len(col) - TP
+             precision = TP / (TP + FP) * 100 if TP + FP > 0 else 0
+@@ -842,8 +858,10 @@ class FI2010(DataAgent):
+     def _read_10_days_dep(cls, train_dir, test_dir, auction, norm_type, setup):
+         """Read train_1, test_1, ... test_9 in order."""
+         assert setup == 2
+-        train_paths = cls._get_data_file_path_list(train_dir, True, auction, norm_type)
+-        test_paths = cls._get_data_file_path_list(test_dir, False, auction, norm_type)
++        train_paths = cls._get_data_file_path_list(train_dir, True, auction,
++                                                   norm_type)
++        test_paths = cls._get_data_file_path_list(test_dir, False, auction,
++                                                  norm_type)
+         # Read data from .txt files
+         features, targets = [], {}
+         horizons = [10, 20, 30, 50, 100]
+@@ -857,9 +875,8 @@ class FI2010(DataAgent):
+             features.append([])
+             for h in horizons:
+                 targets[h].append([])
+-            console.show_status(
+-                "Reading data from `{}` ...".format(os.path.basename(path))
+-            )
++            console.show_status("Reading data from `{}` ...".format(
++                os.path.basename(path)))
+             with open(path, "r") as f:
+                 lines = f.readlines()
+             # Sanity check
+@@ -880,10 +897,10 @@ class FI2010(DataAgent):
+             # Stack list
+             features[-1] = np.stack(features[-1], axis=0)
+             for k, h in enumerate(horizons):
+-                targets[h][-1] = (
+-                    np.array(np.stack(targets[h][-1], axis=0), dtype=np.int64) - 1
+-                )
+-            console.show_status("Successfully read {} event blocks".format(total))
++                targets[h][-1] = (np.array(np.stack(targets[h][-1], axis=0),
++                                           dtype=np.int64) - 1)
++            console.show_status(
++                "Successfully read {} event blocks".format(total))
+         # Sanity check and return
+         total = sum([len(x) for x in features])
+         console.show_status("Totally {} event blocks read.".format(total))
+diff --git a/third_party_libraries/gam_rhn/tframe/examples/00-MNIST/mn_core.py b/third_party_libraries/gam_rhn/tframe/examples/00-MNIST/mn_core.py
+index d1fabef..a4adcd8 100644
+--- a/third_party_libraries/gam_rhn/tframe/examples/00-MNIST/mn_core.py
++++ b/third_party_libraries/gam_rhn/tframe/examples/00-MNIST/mn_core.py
+@@ -9,7 +9,9 @@ for _ in range(DIR_DEPTH + 1):
+ from tframe import console, SaveMode
+ from tframe.trainers import SmartTrainerHub
+ from tframe import Classifier
++from tframe import monitor
+ 
++import mn_ad as ad
+ import mn_du as du
+ 
+ 
+@@ -61,6 +63,10 @@ th.evaluate_test_set = True
+ 
+ 
+ def activate(export_false=False):
++  # Register activation filter
++  if th.export_activations:
++    monitor.register_activation_filter(ad.act_type_ii_filter)
++
+   # Load data
+   train_set, val_set, test_set = du.load_data(th.data_dir)
+ 
+diff --git a/third_party_libraries/gam_rhn/tframe/examples/00-MNIST/mn_mu.py b/third_party_libraries/gam_rhn/tframe/examples/00-MNIST/mn_mu.py
+index ab29462..788e663 100644
+--- a/third_party_libraries/gam_rhn/tframe/examples/00-MNIST/mn_mu.py
++++ b/third_party_libraries/gam_rhn/tframe/examples/00-MNIST/mn_mu.py
+@@ -19,7 +19,7 @@ def get_container(th, flatten=False):
+     model.add(Flatten())
+     # Register extractor and researcher
+     model.register_extractor(mn_du.MNIST.connection_heat_map_extractor)
+-    monitor.register_researcher(mn_du.MNIST.flatten_researcher)
++    monitor.register_grad_researcher(mn_du.MNIST.flatten_researcher)
+   return model
+ 
+ 
+diff --git a/third_party_libraries/gam_rhn/tframe/examples/01-CIFAR10/cf10_mu.py b/third_party_libraries/gam_rhn/tframe/examples/01-CIFAR10/cf10_mu.py
+index 49868ae..ea35a1b 100644
+--- a/third_party_libraries/gam_rhn/tframe/examples/01-CIFAR10/cf10_mu.py
++++ b/third_party_libraries/gam_rhn/tframe/examples/01-CIFAR10/cf10_mu.py
+@@ -20,7 +20,7 @@ def get_container(th, flatten=False):
+   assert isinstance(th, Config)
+   model = Classifier(mark=th.mark)
+   model.add(Input(sample_shape=th.input_shape))
+-  if th.centralize_data: model.add(Normalize(mu=th.data_mean))
++  if th.centralize_data: model.add(Normalize(mu=th.data_mean, sigma=255.))
+   if flatten: model.add(Flatten())
+   return model
+ 
+@@ -32,7 +32,7 @@ def finalize(th, model):
+   # model.add(Dense(num_neurons=th.num_classes))
+   model.add(Activation('softmax'))
+   # Build model
+-  model.build(metric=['loss', 'accuracy'], batch_metric='accuracy',
++  model.build(metric=['accuracy', 'loss'], batch_metric='accuracy',
+               eval_metric='accuracy')
+   return model
+ 
+@@ -61,7 +61,7 @@ def multinput(th):
+   model.add(Linear(output_dim=th.num_classes))
+ 
+   # Build model
+-  model.build(metric=['loss', 'accuracy'], batch_metric='accuracy',
++  model.build(metric=['accuracy', 'loss'], batch_metric='accuracy',
+               eval_metric='accuracy')
+ 
+   return model
+diff --git a/third_party_libraries/gam_rhn/tframe/examples/view_notes.py b/third_party_libraries/gam_rhn/tframe/examples/view_notes.py
+index 1e7ac4f..bdfa201 100644
+--- a/third_party_libraries/gam_rhn/tframe/examples/view_notes.py
++++ b/third_party_libraries/gam_rhn/tframe/examples/view_notes.py
+@@ -8,6 +8,7 @@ for _ in range(DIR_DEPTH + 1):
+ from tframe.utils.summary_viewer.main_frame import SummaryViewer
+ from tframe import local
+ from tframe.utils.tensor_viewer.plugins import lottery
++from tframe.utils.tensor_viewer.plugins import activation_sparsity
+ 
+ 
+ default_inactive_flags = (
+@@ -58,7 +59,8 @@ while True:
+       default_inactive_criteria=default_inactive_criteria,
+       flags_to_ignore=flags_to_ignore,
+     )
+-    viewer.register_plugin(lottery.plugin)
++    # viewer.register_plugin(lottery.plugin)
++    viewer.register_plugin(activation_sparsity.plugin)
+     viewer.show()
+ 
+   except Exception as e:
+diff --git a/third_party_libraries/gam_rhn/tframe/layers/sparse/sparse_sog_n.py b/third_party_libraries/gam_rhn/tframe/layers/sparse/sparse_sog_n.py
+index 1477613..89e81ff 100644
+--- a/third_party_libraries/gam_rhn/tframe/layers/sparse/sparse_sog_n.py
++++ b/third_party_libraries/gam_rhn/tframe/layers/sparse/sparse_sog_n.py
+@@ -4,6 +4,7 @@ from __future__ import print_function
+ 
+ import tensorflow as tf
+ 
++from tframe import context
+ from tframe import checker
+ from tframe import hub as th
+ from tframe.activations import sog
+@@ -71,6 +72,9 @@ class SparseSOG(HyperBase):
+       net_gate = self.dense_v2(self._num_neurons, 'seed', head)
+     gate = sog(net_gate, self._group_size)
+ 
++    # Export gates if necessary
++    if th.export_gates: context.add_tensor_to_export('sog_gate', gate)
++
+     # Apply gate
+     y = tf.multiply(y_bar, gate, 'y')
+     # ~
+diff --git a/third_party_libraries/gam_rhn/tframe/utils/janitor.py b/third_party_libraries/gam_rhn/tframe/utils/janitor.py
+index a8d33c7..8f7e6f3 100644
+--- a/third_party_libraries/gam_rhn/tframe/utils/janitor.py
++++ b/third_party_libraries/gam_rhn/tframe/utils/janitor.py
+@@ -5,6 +5,16 @@ from __future__ import print_function
+ import numpy as np
+ 
+ 
++def wrap(obj, obj_type=None, wrap_as=list):
++  """Wrap obj into list."""
++  assert wrap_as in (list, tuple)
++  if not isinstance(obj, wrap_as): obj = wrap_as([obj])
++  if obj_type is not None:
++    from tframe import checker
++    obj = checker.check_type_v2(obj, obj_type)
++  return obj
++
++
+ def recover_seq_set_outputs(outputs, seq_set):
+   """Outputs of tframe batch evaluation are messed up.
+      This method will help.
+diff --git a/third_party_libraries/gam_rhn/tframe/utils/tensor_viewer/main_frame.py b/third_party_libraries/gam_rhn/tframe/utils/tensor_viewer/main_frame.py
+index 1c1de02..354eb63 100644
+--- a/third_party_libraries/gam_rhn/tframe/utils/tensor_viewer/main_frame.py
++++ b/third_party_libraries/gam_rhn/tframe/utils/tensor_viewer/main_frame.py
+@@ -9,6 +9,7 @@ try:
+   from PIL import Image as Image_
+   from PIL import ImageTk
+ 
++  from tframe.utils import janitor
+   from tframe.utils.note import Note
+   from tframe.utils.tensor_viewer import key_events
+   from tframe.utils.tensor_viewer.context import Context
+@@ -44,7 +45,7 @@ class TensorViewer(Viewer):
+     self._global_refresh()
+ 
+     # Set plugin (beta) (This line should be put before set_note)
+-    self._plugins = kwargs.get('plugins', [])
++    self._plugins = janitor.wrap(kwargs.get('plugins', []))
+ 
+     # If note or note_path is provided, try to load it
+     if note is not None or note_path is not None:
+diff --git a/third_party_libraries/gam_rhn/tframe/utils/tensor_viewer/plugin.py b/third_party_libraries/gam_rhn/tframe/utils/tensor_viewer/plugin.py
+index 7828e00..a83eb0e 100644
+--- a/third_party_libraries/gam_rhn/tframe/utils/tensor_viewer/plugin.py
++++ b/third_party_libraries/gam_rhn/tframe/utils/tensor_viewer/plugin.py
+@@ -2,6 +2,7 @@ from __future__ import absolute_import
+ from __future__ import division
+ from __future__ import print_function
+ 
++import inspect
+ from collections import OrderedDict
+ 
+ 
+@@ -24,3 +25,27 @@ class VariableWithView(object):
+     self._view = view
+ 
+   def display(self, vv): self._view(vv, self._value_list)
++
++
++def recursively_modify(method, v_dict, level=0, verbose=True):
++  """This method recursively modifies v_dict with a provided 'method'.
++     'method' accepts keys and values(list of numpy arrays) and returns
++     modified values (which can be a tframe.VariableViewer).
++     Sometimes method should contain logic to determine whether the input values
++     should be modified.
++  """
++  # Sanity check
++  assert callable(method) and isinstance(v_dict, dict)
++  assert inspect.getfullargspec(method).args == ['key', 'value']
++  if len(v_dict) == 0: return
++
++  # If values in v_dict are dictionaries,  recursively modify each of them
++  if isinstance(list(v_dict.values())[0], dict):
++    for e_key, e_dict in v_dict.items():
++      assert isinstance(e_dict, dict)
++      if verbose: print('*> modifying dict {} ...'.format(e_key))
++      recursively_modify(method, e_dict, level=level+1, verbose=verbose)
++    return
++
++  # At this point, values in v_dict must be lists of numpy arrays
++  for key in v_dict.keys(): v_dict[key] = method(key, v_dict[key])
+diff --git a/third_party_libraries/gam_rhn/tframe/utils/tensor_viewer/plugins/activation_sparsity.py b/third_party_libraries/gam_rhn/tframe/utils/tensor_viewer/plugins/activation_sparsity.py
+new file mode 100644
+index 0000000..437cf08
+--- /dev/null
++++ b/third_party_libraries/gam_rhn/tframe/utils/tensor_viewer/plugins/activation_sparsity.py
+@@ -0,0 +1,67 @@
++import re
++from collections import OrderedDict
++
++import numpy as np
++
++import matplotlib.pyplot as plt
++
++from tframe import checker
++from tframe.utils.tensor_viewer.plugin import Plugin, VariableWithView
++from tframe.utils.tensor_viewer.plugin import recursively_modify
++
++from .plotter.histogram import histogram
++from .plotter.heatmap1d import linear_heatmap
++from .plotter.heatmap1dto2d import heatmap2d
++
++
++def view(self, array_list):
++  from tframe.utils.tensor_viewer.variable_viewer import VariableViewer
++  assert isinstance(array_list, list) and isinstance(self, VariableViewer)
++
++  # Handle things happens in VariableView.refresh method
++
++  # Create subplots if not exists
++  if not hasattr(self, 'sub211'):
++    self.sub211 = self.figure.add_subplot(211, autoscale_on=True)
++  if not hasattr(self, 'sub212'):
++    self.sub212 = self.figure.add_subplot(212, autoscale_on=True)
++  # Clear subplots
++  self.sub211.cla()
++  self.sub212.cla()
++  # Hide subplot
++  self.subplot.set_axis_off()
++
++  # Hide ax2
++  self.set_ax2_invisible()
++
++  # Plot histogram
++
++  # Get range
++  a_range = [np.min(array_list), np.max(array_list)]
++  # Get activation
++  activation = array_list[self.index].flatten()
++  title = 'Activation Distribution'
++  histogram(self.sub211, activation, val_range=a_range, title=title)
++
++  # Plot heat-map
++  heatmap2d(self.sub212, activation, folds=5)
++
++  # Tight layout
++  self.figure.tight_layout()
++
++
++def method(key, value):
++  assert isinstance(key, str)
++  if 'sog_gate' not in key: return value
++  checker.check_type_v2(value, np.ndarray)
++  # Make sure activation is 1-D array
++  assert len(value[0].shape) == 1
++  return VariableWithView(value, view)
++
++
++def modifier(v_dict):
++  assert isinstance(v_dict, OrderedDict)
++  recursively_modify(method, v_dict, verbose=True)
++
++
++plugin = Plugin(dict_modifier=modifier)
+diff --git a/third_party_libraries/gam_rhn/tframe/utils/tensor_viewer/plugins/plotter/__init__.py b/third_party_libraries/gam_rhn/tframe/utils/tensor_viewer/plugins/plotter/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/third_party_libraries/gam_rhn/tframe/utils/tensor_viewer/plugins/plotter/heatmap1d.py b/third_party_libraries/gam_rhn/tframe/utils/tensor_viewer/plugins/plotter/heatmap1d.py
+new file mode 100644
+index 0000000..cc7ddaa
+--- /dev/null
++++ b/third_party_libraries/gam_rhn/tframe/utils/tensor_viewer/plugins/plotter/heatmap1d.py
+@@ -0,0 +1,28 @@
++import numpy as np
++
++import matplotlib.pyplot as plt
++
++
++def linear_heatmap(
++    subplot, array, title=None, horizontal=True, cmap='bwr', width=2,
++    vmax=1, vmin=-1):
++  assert isinstance(subplot, plt.Axes) and isinstance(array, np.ndarray)
++  assert isinstance(width, int) and width >= 1
++
++  # Stretch image
++  img = np.stack([array.flatten()] * width, axis=0 if horizontal else 1)
++
++  # Plot image
++  subplot.imshow(img, cmap=cmap, interpolation='none', vmin=vmin, vmax=vmax)
++
++  # Hide y axis
++  subplot.yaxis.set_ticks([])
++
++  # Set grid off
++  subplot.axis('off')
++
++  # Set title if provided
++  if isinstance(title, str): subplot.set_title(title)
++
++
++
+diff --git a/third_party_libraries/gam_rhn/tframe/utils/tensor_viewer/plugins/plotter/heatmap1dto2d.py b/third_party_libraries/gam_rhn/tframe/utils/tensor_viewer/plugins/plotter/heatmap1dto2d.py
+new file mode 100644
+index 0000000..dc0a01c
+--- /dev/null
++++ b/third_party_libraries/gam_rhn/tframe/utils/tensor_viewer/plugins/plotter/heatmap1dto2d.py
+@@ -0,0 +1,54 @@
++import numpy as np
++
++import matplotlib.pyplot as plt
++
++
++def heatmap2d(subplot, array, title=None, folds=5, v_range=None,
++              min_color=(1., 1., 1.), max_color=(1., 0., 0.), grey=0.7):
++  """
++  :param array: numpy array
++  :param folds: height of the image to plot
++  :param v_range: value range, a tuple/list of 2 float number. None by default
++  :param min_color: color of pixel with min value, a tuple/list of 3 float
++                     numbers between 0. and 1.
++  :param max_color: color of pixel with max value, a tuple/list of 3 float
++                     number between 0. and 1.
++  """
++  # Check subplot and array
++  assert isinstance(subplot, plt.Axes) and isinstance(array, np.ndarray)
++  assert isinstance(folds, int) and folds > 0
++  # Check v_range
++  v_min, v_max = v_range if v_range else (min(array), max(array))
++  assert v_max - v_min > 0.
++
++  # Create a grey line
++  size = array.size
++  width = int(np.ceil(size / folds))
++  max_color, min_color = [
++    np.reshape(v, newshape=[1, 3]) for v in (max_color, min_color)]
++  line = np.ones(shape=[width * folds, 3]) * grey
++
++  # Map array into pixels with color and put them into the line
++  values = np.maximum(0, array - v_min) / (v_max - v_min)
++  values = np.stack([values] * 3, axis=1)
++  values = values * (max_color - min_color) + min_color
++  line[:size] = values
++
++  # Fold line to image
++  img = np.reshape(line, newshape=(folds, width, 3))
++
++  # Plot image
++  subplot.imshow(img, interpolation='none')
++
++  # Hide y axis
++  subplot.yaxis.set_ticks([])
++
++  # Set grid off
++  subplot.axis('off')
++
++  # Set title if provided
++  if isinstance(title, str): subplot.set_title(title)
++
++
++
++
+diff --git a/third_party_libraries/gam_rhn/tframe/utils/tensor_viewer/plugins/plotter/histogram.py b/third_party_libraries/gam_rhn/tframe/utils/tensor_viewer/plugins/plotter/histogram.py
+new file mode 100644
+index 0000000..69fbffd
+--- /dev/null
++++ b/third_party_libraries/gam_rhn/tframe/utils/tensor_viewer/plugins/plotter/histogram.py
+@@ -0,0 +1,35 @@
++import numpy as np
++
++import matplotlib
++import matplotlib.pyplot as plt
++from matplotlib.ticker import FuncFormatter
++
++
++def histogram(
++    subplot, values, val_range=None, title='Distribution', y_lim_pct=0.5):
++
++  assert isinstance(subplot, plt.Axes) and isinstance(values, np.ndarray)
++  # values for 1-D distribution must be flattened
++  if len(values.shape) > 1: values = values.flatten()
++
++  # Plot 1-D histogram
++  subplot.hist(values, bins=50, facecolor='#cccccc', range=val_range)
++  subplot.set_title(title)
++  subplot.set_xlabel('Magnitude')
++  subplot.set_ylabel('Density')
++
++  # ~
++  def to_percent(y, _):
++    usetex = matplotlib.rcParams['text.usetex']
++    pct = y * 100.0 / values.size
++    return '{:.1f}{}'.format(pct, r'$\%$' if usetex else '%')
++  subplot.yaxis.set_major_formatter(FuncFormatter(to_percent))
++
++  subplot.set_aspect('auto')
++  subplot.grid(True)
++
++  subplot.set_ylim([0.0, y_lim_pct * values.size])
++
++
++
++
+diff --git a/third_party_libraries/gam_rhn/tframe/utils/tensor_viewer/plugins/xwy.py b/third_party_libraries/gam_rhn/tframe/utils/tensor_viewer/plugins/plotter/xwy.py
+similarity index 100%
+rename from utils/tensor_viewer/plugins/xwy.py
+rename to utils/tensor_viewer/plugins/plotter/xwy.py
+diff --git a/third_party_libraries/gam_rhn/tframe/utils/tensor_viewer/plugins/weights_distribution.py b/third_party_libraries/gam_rhn/tframe/utils/tensor_viewer/plugins/weights_distribution.py
+index 4c52d80..5a9f01e 100644
+--- a/third_party_libraries/gam_rhn/tframe/utils/tensor_viewer/plugins/weights_distribution.py
++++ b/third_party_libraries/gam_rhn/tframe/utils/tensor_viewer/plugins/weights_distribution.py
+@@ -6,6 +6,7 @@ import matplotlib
+ from matplotlib.ticker import FuncFormatter
+ 
+ from tframe.utils.tensor_viewer.plugin import Plugin, VariableWithView
++from .plotter import histogram
+ 
+ 
+ prefix = 'weights_'
+@@ -31,27 +32,13 @@ def view(self, weights_list):
+   weights = weights_list[self.index]
+   assert isinstance(weights, np.ndarray)
+   weights = weights.flatten()
+-  # Plot
++
++  # Hide ax2
+   self.set_ax2_invisible()
+ 
+-  self.subplot.hist(weights, bins=50, facecolor='#cccccc', range=w_range)
+-  self.subplot.set_title(
+-    'Weights magnitude distribution ({} total)'.format(weights.size))
+-  self.subplot.set_xlabel('Magnitude')
+-  self.subplot.set_ylabel('Density')
+-  # self.subplot.set_xlim(w_range)
+-
+-  def to_percent(y, _):
+-    usetex = matplotlib.rcParams['text.usetex']
+-    pct = y * 100.0 / weights.size
+-    return '{:.1f}{}'.format(pct, r'$\%$' if usetex else '%')
+-  self.subplot.yaxis.set_major_formatter(FuncFormatter(to_percent))
+-
+-  self.subplot.set_aspect('auto')
+-  self.subplot.grid(True)
+-
+-  # y_lim = self.subplot.get_ylim()
+-  # if y_lim[0] > y_lim[1]: self.subplot.set_ylim(y_lim[::-1])
+-  self.subplot.set_ylim([0.0, 0.065 * weights.size])
++  # Plot histogram
++  title = 'Weights magnitude distribution ({} total)'.format(weights.size)
++  histogram.histogram(self, weights, val_range=w_range, title=title)
++
+ 
+ plugin = Plugin(dict_modifier=modifier)
+diff --git a/yaml/preprocessing.yaml b/yaml/preprocessing.yaml
+index 18512e2..91f0191 100644
+--- a/yaml/preprocessing.yaml
++++ b/yaml/preprocessing.yaml
+@@ -10,13 +10,16 @@ stop_loss_multiplier:
+   value: 1
+ minimum_return:
+   desc: Amount of return chosen to consider it a profitable trade
+-  value: 0.001 * 1 / 23
++  value: 0.001 * 1 / 30
+ vertical_barrier_seconds:
+   desc: Length of the labelling window
+   value: round(1 / 2, 3)
+ head:
+   desc: Take the first n values of dataframes. If it equals zero take the entire df
+   value: 1000
++split_by:
++  desc: Number of samples to split get_events function on to avoid maxing out the ram
++  value: 100
+ vol_max_modifier: 
+   desc: How much extra profit above minimum return required in the face of max volatility
+   value: 0.00000002
+diff --git a/yaml/tabl.yaml b/yaml/tabl.yaml
+index a4361e3..339685a 100644
+--- a/yaml/tabl.yaml
++++ b/yaml/tabl.yaml
+@@ -1,7 +1,7 @@
+ # sample config defaults file
+ epochs:
+   desc: Number of epochs to train over
+-  value: 200
++  value: 1000
+ batch_size:
+   desc: Size of each mini-batch
+   value: 256

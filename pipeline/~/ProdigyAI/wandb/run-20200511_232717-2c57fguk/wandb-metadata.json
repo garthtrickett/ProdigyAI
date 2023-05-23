@@ -1,0 +1,27 @@
+{
+    "root": "/home/garthtrickett/ProdigyAI",
+    "program": "/home/garthtrickett/ProdigyAI/pipeline/preprocessing.py",
+    "git": {
+        "remote": "https://github.com/garthtrickett/ProdigyAI",
+        "commit": "28f66175f6574414f2b3f591102e1ba3ba042f73"
+    },
+    "email": "garthtrickett@gmail.com",
+    "codePath": "pipeline/preprocessing.py",
+    "startedAt": "2020-05-11T23:27:17.767654",
+    "host": "preemp-cpu-1",
+    "username": "garthtrickett",
+    "executable": "/home/garthtrickett/miniconda3/envs/ProdigyAI/bin/python",
+    "os": "Linux-5.3.0-1018-gcp-x86_64-with-debian-buster-sid",
+    "python": "3.7.6",
+    "cpu_count": 6,
+    "args": [
+        "-f",
+        "/home/garthtrickett/.local/share/jupyter/runtime/kernel-9b8d3d75-bf55-437f-88ce-c57362a66ca0.json"
+    ],
+    "state": "running",
+    "jobType": null,
+    "mode": "run",
+    "name": "ruby-shadow-63",
+    "project": "prodigyai",
+    "heartbeatAt": "2020-05-11T23:28:03.163634"
+}

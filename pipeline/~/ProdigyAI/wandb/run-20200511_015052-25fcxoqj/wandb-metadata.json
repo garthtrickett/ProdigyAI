@@ -1,0 +1,27 @@
+{
+    "root": "/home/garthtrickett/ProdigyAI",
+    "program": "/home/garthtrickett/ProdigyAI/pipeline/deeplob.py",
+    "git": {
+        "remote": "https://github.com/garthtrickett/ProdigyAI",
+        "commit": "7667fefed2018a0664418c25c97e3c08866a6f71"
+    },
+    "email": "garthtrickett@gmail.com",
+    "codePath": "pipeline/deeplob.py",
+    "startedAt": "2020-05-11T01:50:51.980490",
+    "host": "preemp-cpu-1",
+    "username": "garthtrickett",
+    "executable": "/home/garthtrickett/miniconda3/envs/ProdigyAI/bin/python",
+    "os": "Linux-5.3.0-1018-gcp-x86_64-with-debian-buster-sid",
+    "python": "3.7.6",
+    "cpu_count": 6,
+    "args": [
+        "-f",
+        "/home/garthtrickett/.local/share/jupyter/runtime/kernel-ee0d39a9-90e8-4c4e-b424-12bb62601d79.json"
+    ],
+    "state": "running",
+    "jobType": null,
+    "mode": "run",
+    "name": "grateful-sea-36",
+    "project": "prodigyai",
+    "heartbeatAt": "2020-05-11T01:53:02.358555"
+}

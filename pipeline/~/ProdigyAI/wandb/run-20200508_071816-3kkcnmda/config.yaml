@@ -1,0 +1,26 @@
+wandb_version: 1
+
+_wandb:
+  desc: null
+  value:
+    cli_version: 0.8.35
+    code_path: code/pipeline/tabl.py
+    framework: keras
+    is_jupyter_run: true
+    is_kaggle_kernel: false
+    python_version: 3.7.6
+dataset:
+  desc: null
+  value: arch=TABL&name=two_model&WL=200&pt=1&sl=1&min_ret=4.347826086956522e-05&vbs=0.5&head=1000&skip=0&vol_max=4.3498260869565224e-05&vol_min=4.348826086956522e-05&filter=none&cm_vol_mod=0&sw=on&fd=off&input=obook&ntb=True&tslbc=True.h5
+params:
+  desc: null
+  value:
+    batch_size:
+      desc: Size of each mini-batch
+      value: 32
+    epochs:
+      desc: Number of epochs to train over
+      value: 100
+yaml:
+  desc: null
+  value: ../yaml/tabl.yaml

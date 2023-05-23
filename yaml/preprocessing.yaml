@@ -1,0 +1,85 @@
+# Preprocessing config file
+window_length:
+  desc: Length of the input feature window
+  value: 100
+profit_taking_multiplier:
+  desc: Vertical Barrier profit taking multiplier
+  value: 1
+stop_loss_multiplier:
+  desc: Vertical Barrier profit taking multiplier
+  value: 1
+minimum_return:
+  desc: Amount of return chosen to consider it a profitable trade
+  value: 0.001 * 1 / 5.9
+vertical_barrier_seconds:
+  desc: Length of the labelling window
+  value: round(1 / 1, 3)
+head:
+  desc: Take the first n values of dataframes. If it equals zero take the entire df
+  value: 0
+split_by_get_first_touch_dates:
+  desc: (less than head) Number of samples to split get_first_touch_dates function on to avoid maxing out the ram
+  value: 100000 # 100000
+split_by_get_events_from_first_touch_dates:
+  desc: (less than head) Number of samples to split get_first_touch_dates function on to avoid maxing out the ram
+  value: 100000 # 1000000
+psuedo_day_length_in_seconds:
+  desc: null
+  value: 86400
+vol_max_modifier: 
+  desc: How much extra profit above minimum return required in the face of max volatility
+  value: 0.00000002
+vol_min_modifier: 
+  desc: How much profit above minimum return required in the face of min volatility
+  value: 0.00000001
+filter_type:
+  desc: Event filter type
+  value: none
+cusum_filter_volume_modifier:
+  desc: null
+  value: 500
+use_sample_weights:
+  desc: null
+  value: false
+use_fractional_differentiation:
+  desc: null
+  value: false
+input_type:
+  desc: Whether to use orderbook data, trade ticks, time bars etc
+  value: orderbook
+scaling_type:
+  desc: Whether to use normalization/standardization/rolling stand etc
+  value: z_score
+scaling_maximum:
+  desc: null
+  value: 1
+scaling_minimum:
+  desc: null
+  value: 0
+generate_features_and_labels:
+  desc: Wether to generate the triple barrier labels or use existing
+  value: True
+apply_train_test_split_and_normalize:
+  desc: null
+  value: True
+use_last_n_days_scaling:
+  desc: null
+  value: False
+highway_rnn:
+  desc: null
+  value: True
+deeplob_or_tabl:
+  desc: null
+  value: True
+pair:
+  desc: null
+  value: bchusdt
+labelling_method:
+  desc: null
+  value: deeplob
+num_classes:
+  desc: null
+  value: 3
+
+
+

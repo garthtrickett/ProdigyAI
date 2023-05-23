@@ -1,0 +1,10 @@
+{"epoch": 0, "val_loss": NaN, "val_accuracy": 0.46875, "loss": 1.7686542868614197, "accuracy": 0.294921875, "_runtime": 3.2517967224121094, "_timestamp": 1588916374.0368266, "_step": 0}
+{"epoch": 1, "val_loss": NaN, "val_accuracy": 0.8984375, "loss": Infinity, "accuracy": 0.337890625, "_runtime": 3.393254041671753, "_timestamp": 1588916374.178284, "_step": 1}
+{"epoch": 2, "val_loss": NaN, "val_accuracy": 0.828125, "loss": NaN, "accuracy": 0.37109375, "_runtime": 3.5161523818969727, "_timestamp": 1588916374.3011823, "_step": 2}
+{"epoch": 3, "val_loss": NaN, "val_accuracy": 0.78125, "loss": NaN, "accuracy": 0.37109375, "_runtime": 3.7244136333465576, "_timestamp": 1588916374.5094435, "_step": 3}
+{"epoch": 4, "val_loss": NaN, "val_accuracy": 0.69140625, "loss": NaN, "accuracy": 0.37109375, "_runtime": 3.8410911560058594, "_timestamp": 1588916374.626121, "_step": 4}
+{"epoch": 5, "val_loss": NaN, "val_accuracy": 0.8984375, "loss": NaN, "accuracy": 0.37109375, "_runtime": 4.00070858001709, "_timestamp": 1588916374.7857385, "_step": 5}
+{"epoch": 6, "val_loss": NaN, "val_accuracy": 0.8984375, "loss": NaN, "accuracy": 0.369140625, "_runtime": 4.136523962020874, "_timestamp": 1588916374.9215539, "_step": 6}
+{"epoch": 7, "val_loss": NaN, "val_accuracy": 0.8984375, "loss": NaN, "accuracy": 0.37109375, "_runtime": 4.293168306350708, "_timestamp": 1588916375.0781982, "_step": 7}
+{"epoch": 8, "val_loss": NaN, "val_accuracy": 0.58203125, "loss": NaN, "accuracy": 0.37109375, "_runtime": 4.45461106300354, "_timestamp": 1588916375.239641, "_step": 8}
+{"epoch": 9, "val_loss": NaN, "val_accuracy": 0.58203125, "loss": NaN, "accuracy": 0.37109375, "_runtime": 4.564955949783325, "_timestamp": 1588916375.3499858, "_step": 9}

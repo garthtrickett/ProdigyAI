@@ -1,0 +1,8 @@
+# Preprocessing config file
+pair:
+  desc: null
+  value: bchusdt
+source_type:
+  desc: null
+  value: only_orderbook
+

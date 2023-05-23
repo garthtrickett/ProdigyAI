@@ -1,0 +1,59 @@
+diff --git a/pipeline/preprocessing.py b/pipeline/preprocessing.py
+index 714d325..0155ba1 100644
+--- a/pipeline/preprocessing.py
++++ b/pipeline/preprocessing.py
+@@ -81,6 +81,10 @@ except Exception as e:
+                         "--is_finished",
+                         type=str,
+                         help="Is this a continuation of preempted instance?")
++    parser.add_argument("-r",
++                        "--resuming",
++                        type=str,
++                        help="Is this a continuation of preempted instance?")
+     args = parser.parse_args()
+     if args.stage != None:
+         arg_parse_stage = 1
+@@ -155,10 +159,6 @@ minimum_return = eval(wandb.config['params']['minimum_return']['value'])
+ vertical_barrier_seconds = eval(
+     wandb.config['params']['vertical_barrier_seconds']['value'])
+ 
+-# Parameters
+-parameters = dict()
+-wandb.config['params']['head'][
+-    'value'] = 1000  # take only first x number of rows 0 means of
+ volume_max = (
+     minimum_return + wandb.config['params']['vol_max_modifier']['value']
+ )  # The higher this is the more an increase in volatility requries an increase
+@@ -390,8 +390,7 @@ if regenerate_features_and_labels == True:
+         num_threads=cpus * 2,
+         vertical_barrier_times=vertical_barrier_timestamps,
+         side_prediction=side,
+-        split_by=
+-        100  # maybe we want this as large as we can while still fitting in ram
++        split_by= wandb.config['params']['split_by']['value']  # maybe we want this as large as we can while still fitting in ram
+     )
+ 
+     end = time.time()
+Submodule third_party_libraries/TABL contains modified content
+diff --git a/third_party_libraries/TABL/__pycache__/Layers.cpython-37.pyc b/third_party_libraries/TABL/__pycache__/Layers.cpython-37.pyc
+deleted file mode 100644
+index ff0a753..0000000
+Binary files a/third_party_libraries/TABL/__pycache__/Layers.cpython-37.pyc and /dev/null differ
+diff --git a/third_party_libraries/TABL/__pycache__/Models.cpython-37.pyc b/third_party_libraries/TABL/__pycache__/Models.cpython-37.pyc
+deleted file mode 100644
+index a57f1ba..0000000
+Binary files a/third_party_libraries/TABL/__pycache__/Models.cpython-37.pyc and /dev/null differ
+diff --git a/yaml/preprocessing.yaml b/yaml/preprocessing.yaml
+index 18512e2..d59dd66 100644
+--- a/yaml/preprocessing.yaml
++++ b/yaml/preprocessing.yaml
+@@ -17,6 +17,9 @@ vertical_barrier_seconds:
+ head:
+   desc: Take the first n values of dataframes. If it equals zero take the entire df
+   value: 1000
++split_by:
++  desc: Number of samples to split get_events function on to avoid maxing out the ram
++  value: 100
+ vol_max_modifier: 
+   desc: How much extra profit above minimum return required in the face of max volatility
+   value: 0.00000002

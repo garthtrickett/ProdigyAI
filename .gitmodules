@@ -1,0 +1,30 @@
+[submodule "third_party_libraries/third_party_libraries/python_binance"]
+	path = third_party_libraries/third_party_libraries/python_binance
+	url = https://github.com/garthtrickett/python_binance.git
+[submodule "third_party_libraries/python_binance"]
+	path = third_party_libraries/python_binance
+	url = https://github.com/garthtrickett/python_binance.git
+[submodule "third_party_libraries/mlfinlab"]
+	path = third_party_libraries/mlfinlab
+	url = https://github.com/garthtrickett/mlfinlab.git
+[submodule "third_party_libraries/gam_rhn"]
+	path = third_party_libraries/gam_rhn
+	url = https://github.com/garthtrickett/gam_rhn.git
+[submodule "third_party_libraries/timeseriesAI"]
+	path = third_party_libraries/timeseriesAI
+	url = https://github.com/garthtrickett/timeseriesAI.git
+[submodule "third_party_libraries/hudson_and_thames"]
+	path = third_party_libraries/hudson_and_thames
+	url = https://github.com/garthtrickett/hudson_and_thames.git
+[submodule "third_party_libraries/TABL"]
+	path = third_party_libraries/TABL
+	url = https://github.com/garthtrickett/TABL.git
+[submodule "third_party_libraries/third_party_libraries/gam_rhn/tframe"]
+	path = third_party_libraries/third_party_libraries/gam_rhn/tframe
+	url = https://github.com/garthtrickett/tframe.git
+[submodule "third_party_libraries/gam_rhn/tframe"]
+	path = third_party_libraries/gam_rhn/tframe
+	url = https://github.com/garthtrickett/tframe.git
+[submodule "third_party_libraries/keras_one_cycle"]
+	path = third_party_libraries/keras_one_cycle
+	url = https://github.com/titu1994/keras-one-cycle.git

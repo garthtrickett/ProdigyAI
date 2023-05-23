@@ -1,0 +1,339 @@
+diff --git a/one_model.sh b/one_model.sh
+index b700d91..30c6b7c 100644
+--- a/one_model.sh
++++ b/one_model.sh
+@@ -6,8 +6,6 @@ bash local_run_script.sh preprocessing.py preemp-cpu-big-1 1 one_model without_s
+ 
+ bash local_run_script.sh sync_data.py preemp-cpu-big-1 1 one_model without_shutdown pipeline us-central1-a preprocessed NA
+ 
+-
+-bash local_run_script.sh tabl.py preemp-gpu-t4 1 one_model without_shutdown pipeline us-central1-a
+ bash local_run_script.sh tabl.py preemp-gpu-v100-1 1 one_model without_shutdown pipeline us-central1-a gpu_output
+ bash local_run_script.sh deeplob.py preemp-gpu-v100-1 1 one_model without_shutdown pipeline us-central1-a gpu_output NA
+ 
+diff --git a/pipeline/deeplob.py b/pipeline/deeplob.py
+index 1b9cc23..2d6c076 100644
+--- a/pipeline/deeplob.py
++++ b/pipeline/deeplob.py
+@@ -26,6 +26,11 @@ import matplotlib.pyplot as plt
+ import math
+ from numba import njit, prange
+ 
++# Init wandb
++import wandb
++from wandb.keras import WandbCallback
++wandb.init(project="prodigyai")
++
+ # set random seeds
+ np.random.seed(1)
+ tf.random.set_seed(2)
+@@ -52,7 +57,7 @@ sys.path.append(home + "/ProdigyAI")
+ 
+ # Sorting out whether we are using the ipython kernel or not
+ try:
+-    is_finished = "NA"
++    resuming = "NA"
+     get_ipython()
+     check_if_ipython = True
+     path_adjust = "../"
+@@ -75,14 +80,14 @@ except Exception as e:
+                         type=str,
+                         help="one_model or two_model")
+     parser.add_argument("-f",
+-                        "--is_finished",
++                        "--resuming",
+                         type=str,
+                         help="Is this a continuation of preempted instance?")
+     args = parser.parse_args()
+-    if args.is_finished != None:
+-        is_finished = args.is_finished
++    if args.resuming != None:
++        resuming = args.resuming
+     else:
+-        is_finished = "NA"
++        resuming = "NA"
+     if args.stage != None:
+         arg_parse_stage = 1
+         if int(args.stage) == 1:
+@@ -437,7 +442,7 @@ cp_callback = ModelCheckpoint(filepath=checkpoint_path,
+                               verbose=1)
+ 
+ check_point_file = Path(checkpoint_path)
+-if check_point_file.exists() and is_finished == "unfinished":
++if check_point_file.exists() and resuming == "resuming":
+     print("weights loaded")
+     model.load_weights(checkpoint_path)
+ 
+@@ -471,7 +476,7 @@ deeplob.fit(train_generator,
+             epochs=100,
+             verbose=2,
+             validation_data=val_generator,
+-            callbacks=[cp_callback])
++            callbacks=[cp_callback, WandbCallback()])
+ 
+ finished_weights_path = path_adjust + "temp/cp_end.ckpt"
+ deeplob.save_weights(finished_weights_path)
+diff --git a/pipeline/preprocessing.py b/pipeline/preprocessing.py
+index 77e0374..932ae0b 100644
+--- a/pipeline/preprocessing.py
++++ b/pipeline/preprocessing.py
+@@ -138,7 +138,7 @@ if stage == 2:
+ 
+ # Parameters
+ parameters = dict()
+-model_arch = "DLOB"
++model_arch = "TABL"
+ parameters["arch"] = model_arch
+ parameters["name"] = model
+ parameters["WL"] = 200  # WINDOW LONG
+@@ -147,7 +147,7 @@ parameters["sl"] = 1
+ parameters["min_ret"] = 0.001 * 1 / 23
+ parameters["vbs"] = round(1 / 2,
+                           3)  # Increasing this decreases vertical touches
+-parameters["head"] = 0  # take only first x number of rows 0 means of
++parameters["head"] = 1000  # take only first x number of rows 0 means of
+ parameters["skip"] = 0  # sample every n'th row if skip > 0
+ # get even classes at fraction = 0.8 so the training set is balanced then set to 1
+ # 3 million rows is about the limit of before it starts taking ages / memory maxing
+@@ -186,7 +186,7 @@ parameter_string = "&".join("{}{}{}".format(key, "=", val)
+ pt_sl = [parameters["pt"], parameters["sl"]]
+ cpus = cpu_count() - 1
+ 
+-regenerate_features_and_labels = False
++regenerate_features_and_labels = True
+ if regenerate_features_and_labels == True:
+     # READ THE DATA
+     if stage == 1:
+@@ -381,7 +381,7 @@ if regenerate_features_and_labels == True:
+         vertical_barrier_times=vertical_barrier_timestamps,
+         side_prediction=side,
+         split_by=
+-        100000  # maybe we want this as large as we can while still fitting in ram
++        100  # maybe we want this as large as we can while still fitting in ram
+     )
+ 
+     end = time.time()
+@@ -789,7 +789,6 @@ data.iloc[window_index - 10:window_index + 30]
+ 
+ print("plotting finished")
+ 
+-
+ # Sample Weights
+ # if stage == 1:
+ #     weights = attribution.get_weights_by_return(triple_barrier_events.dropna(),
+@@ -803,14 +802,9 @@ if stage == 2:
+     # size
+     parameter_string = parameter_string + "second_stage"
+ 
+-import pdb
+-pdb.set_trace()
+-
+ print("writing train/val/test to .h5 files starting")
+ start = time.time()
+ 
+-
+-
+ # Writing preprocessed X,y
+ h5f = h5py.File(path_adjust + "data/preprocessed/" + parameter_string + ".h5",
+                 "w")
+@@ -865,3 +859,4 @@ with open(path_adjust + "temp/data_name.txt", "w+") as text_file:
+ very_end = time.time()
+ print("full_script_time" + str(very_end - very_start))
+ print(parameter_string + ".h5")
++#
+diff --git a/pipeline/tabl.py b/pipeline/tabl.py
+index b1d73cc..a833351 100644
+--- a/pipeline/tabl.py
++++ b/pipeline/tabl.py
+@@ -30,6 +30,12 @@ from tensorflow.keras.losses import categorical_crossentropy
+ from tensorflow.keras.optimizers import SGD, Adam
+ from keras.callbacks import ModelCheckpoint
+ 
++# Init wandb
++import wandb
++from wandb.keras import WandbCallback
++
++import yaml
++
+ # import tensorflow.keras as keras
+ # import tensorflow.keras.layers as layers
+ # import tensorflow.keras.backend as K
+@@ -39,6 +45,7 @@ try:
+     get_ipython()
+     check_if_ipython = True
+     path_adjust = "../"
++    resuming = "NA"
+ 
+ except Exception as e:
+     check_if_ipython = False
+@@ -54,7 +61,7 @@ except Exception as e:
+                         type=str,
+                         help="Stage of Preprocesssing")
+     parser.add_argument("-f",
+-                        "--is_finished",
++                        "--resuming",
+                         type=str,
+                         help="Is this a continuation of preempted instance?")
+     parser.add_argument("-m",
+@@ -62,10 +69,10 @@ except Exception as e:
+                         type=str,
+                         help="one_model or two_model")
+     args = parser.parse_args()
+-    if args.is_finished != None:
+-        is_finished = args.is_finished
++    if args.resuming != None:
++        resuming = args.resuming
+     else:
+-        is_finished = "NA"
++        resuming = "NA"
+     if args.stage != None:
+         arg_parse_stage = 1
+         if int(args.stage) == 1:
+@@ -83,6 +90,18 @@ if cwd == home + "/":
+     cwd = cwd + "/ProdigyAI"
+     path_adjust = cwd
+ 
++yaml_path = path_adjust + "yaml/tabl.yaml"
++with open(yaml_path) as file:
++    yaml_dict = yaml.load(file, Loader=yaml.FullLoader)
++
++config_dictionary = dict(yaml=yaml_path, params=yaml_dict)
++wandb.init(
++    dir="~/ProdigyAI/",
++    project="prodigyai",
++    config=config_dictionary,
++)
++wandb.config.update({'dataset': 'ab131'})
++
+ # try with 1000 samples, 10 periods and then also with 0,1 normalization and balanced classes
+ 
+ # 1 hidden layer network with input: 40x10, hidden 120x5, output 3x1
+@@ -95,7 +114,7 @@ np.max(example_x)
+ np.mean(example_x)
+ example_y = keras.utils.to_categorical(np.random.randint(0, 3, (1000, )), 3)
+ template = [[40, 200], [60, 10], [120, 5], [3, 1]]
+-                # 200(WINDOW LENGTH)
++# 200(WINDOW LENGTH)
+ 
+ ## PRODIGY AI HOCKUS POCKUS START
+ from pathlib import Path
+@@ -103,7 +122,8 @@ import h5py
+ 
+ home = str(Path.home())
+ 
+-file_name = "arch=DLOB&name=two_model&WL=200&pt=1&sl=1&min_ret=4.347826086956522e-05&vbs=0.5&head=1000&skip=0&vol_max=4.3498260869565224e-05&vol_min=4.348826086956522e-05&filter=none&cm_vol_mod=0&sw=on&fd=off&input=obook&ntb=True&tslbc=True.h5"
++file_name = "arch=TABL&name=two_model&WL=200&pt=1&sl=1&min_ret=4.347826086956522e-05&vbs=0.5&head=1000&skip=0&vol_max=4.3498260869565224e-05&vol_min=4.348826086956522e-05&filter=none&cm_vol_mod=0&sw=on&fd=off&input=obook&ntb=True&tslbc=True.h5"
++wandb.config.update({'dataset': file_name})
+ path = home + "/ProdigyAI/data/preprocessed/" + file_name
+ h5f = h5py.File(path, "r")
+ prices_for_window_index_array_train = h5f[
+@@ -404,7 +424,8 @@ loss_function = categorical_crossentropy
+ # ### cyclical learning rate
+ 
+ # Set CLR options
+-clr_step_size = int(4 * (len(prices_for_window_index_array_train) / batch_size))
++clr_step_size = int(4 *
++                    (len(prices_for_window_index_array_train) / batch_size))
+ base_lr = 1e-4
+ max_lr = 1e-2
+ mode = "triangular"
+@@ -426,7 +447,7 @@ cp_callback = ModelCheckpoint(filepath=checkpoint_path,
+                               verbose=1)
+ 
+ check_point_file = Path(checkpoint_path)
+-if check_point_file.exists() and is_finished == "unfinished":
++if check_point_file.exists() and resuming == "resuming":
+     print("weights loaded")
+     model.load_weights(checkpoint_path)
+ # Fit data to model
+@@ -442,7 +463,6 @@ model.save_weights(finished_weights_path)
+ # create class weight
+ # class_weight = {0: 1e6 / 300.0, 1: 1e6 / 400.0, 2: 1e6 / 300.0}
+ train_generator = DataGenerator(prices_for_window_index_array_train,
+-
+                                 input_features_normalized_train,
+                                 y_train,
+                                 batch_size,
+@@ -464,14 +484,15 @@ steps_per_epoch = len(train_generator)
+ validation_steps = len(val_generator)
+ 
+ # example sata training
+-model.fit(
+-    train_generator,
+-    steps_per_epoch=steps_per_epoch,
+-    validation_steps=validation_steps,
+-    epochs=100,
+-    validation_data=val_generator,
+-    callbacks=[cp_callback])
+-  # no class weight
++model.fit(train_generator,
++          steps_per_epoch=steps_per_epoch,
++          validation_steps=validation_steps,
++          epochs=10,
++          validation_data=val_generator,
++          callbacks=[cp_callback, WandbCallback()])
++
++model.save(os.path.join(wandb.run.dir, "model.h5"))
++# no class weight
+ 
+ ## lob FI-2010 DATA PREPERATION
+ # The first 40 columns of the FI-2010 dataset are 10 levels ask and bid information
+@@ -588,6 +609,8 @@ model.fit(
+ 
+ score = model.evaluate(x=X_test, y=y_test, batch_size=256)
+ 
++# Save model to wandb
++
+ # print(score)
+ 
+ # score on deeplob fi-2010 loss: 0.7469 - acc: 0.6760 - val_loss: 0.6772 - val_acc: 0.7248
+diff --git a/run_script.sh b/run_script.sh
+index 0ff4600..9e1b51e 100644
+--- a/run_script.sh
++++ b/run_script.sh
+@@ -46,7 +46,7 @@ if [[ $9 == *"first_run"* ]]
+ rm -rf nohup.out
+ rm -rf /home/$4/ProdigyAI/logs/*
+ echo 'Up to python script'
+-python $1 --is_finished $9 > ~/ProdigyAI/logs/$1.out
++python $1 --resuming $9 > ~/ProdigyAI/logs/$1.out
+ # python $1 > ~/ProdigyAI/logs/$1.out
+ # --stage $2 --model $3
+ 
+diff --git a/script_runner.sh b/script_runner.sh
+index 8053231..32bf019 100644
+--- a/script_runner.sh
++++ b/script_runner.sh
+@@ -1,7 +1,7 @@
+ 
+ rm -rf ~/ProdigyAI/temp/cp.ckpt
+ rm -rf ~/ProdigyAI/temp/cp_end.ckpt
+-bash local_run_script.sh deeplob.py preemp-gpu-v100 1 one_model without_shutdown pipeline asia-east1-c gpu_output first_run
++bash local_run_script.sh $1 preemp-gpu-v100-1 1 one_model without_shutdown pipeline us-central1-a gpu_output first_run
+ 
+ while true
+ do
+@@ -13,6 +13,6 @@ do
+     if [[ ! -f "/home/$USER/ProdigyAI/temp/cp_end.ckpt" ]]
+     then
+         sleep 60
+-        bash local_run_script.sh deeplob.py preemp-gpu-v100 1 one_model without_shutdown pipeline asia-east1-c gpu_output unfinished
++        bash local_run_script.sh $1 preemp-gpu-v100-1 1 one_model without_shutdown pipeline us-central1-a gpu_output resuming
+     fi
+ done
+diff --git a/temp/cp.ckpt b/temp/cp.ckpt
+index 4592e14..04021b4 100644
+Binary files a/temp/cp.ckpt and b/temp/cp.ckpt differ
+diff --git a/temp/cp_end.ckpt b/temp/cp_end.ckpt
+index b6488a3..22491b9 100644
+Binary files a/temp/cp_end.ckpt and b/temp/cp_end.ckpt differ
+diff --git a/temp/is_script_finished.txt b/temp/is_script_finished.txt
+index 8959ee2..40ca0d3 100644
+--- a/temp/is_script_finished.txt
++++ b/temp/is_script_finished.txt
+@@ -1 +1 @@
+-start_script_time1588820709.7307827
+\ No newline at end of file
++full_script_time64.39192986488342
+\ No newline at end of file
+Submodule third_party_libraries/TABL contains untracked content

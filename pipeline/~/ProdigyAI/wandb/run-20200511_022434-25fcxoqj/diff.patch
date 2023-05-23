@@ -1,0 +1,1173 @@
+diff --git a/pipeline/deeplob.py b/pipeline/deeplob.py
+index 2d6c076..fef42d4 100644
+--- a/pipeline/deeplob.py
++++ b/pipeline/deeplob.py
+@@ -2,6 +2,7 @@
+ import pandas as pd
+ import pickle
+ import numpy as np
++import tensorflow
+ import tensorflow as tf
+ from tensorflow.keras import layers
+ 
+@@ -25,21 +26,17 @@ from keras.utils import np_utils
+ import matplotlib.pyplot as plt
+ import math
+ from numba import njit, prange
+-
+-# Init wandb
+-import wandb
+-from wandb.keras import WandbCallback
+-wandb.init(project="prodigyai")
++import yaml
+ 
+ # set random seeds
+ np.random.seed(1)
+ tf.random.set_seed(2)
+ 
+ import keras
+-from keras.callbacks import ModelCheckpoint
+-from keras import backend as K
++from tensorflow.keras.callbacks import ModelCheckpoint
+ import h5py
+-
++import wandb
++from wandb.keras import WandbCallback
+ # check if using gpu
+ gpus = tf.config.list_physical_devices()
+ any_gpus = [s for s in gpus if "GPU" in s[0]]
+@@ -105,6 +102,23 @@ if cwd == home + "/":
+     cwd = cwd + "/ProdigyAI"
+     path_adjust = cwd
+ 
++# Init wandb
++yaml_path = path_adjust + "yaml/deeplob.yaml"
++with open(yaml_path) as file:
++    yaml_dict = yaml.load(file, Loader=yaml.FullLoader)
++
++config_dictionary = dict(yaml=yaml_path, params=yaml_dict)
++wandb.init(dir="~/ProdigyAI/",
++           project="prodigyai",
++           config=config_dictionary,
++           resume=True)
++
++window_length = wandb.config['params']['window_length']['value']
++num_features = wandb.config['params']['num_features']['value']
++epochs = wandb.config['params']['epochs']['value']
++batch_size = wandb.config['params']['batch_size']['value']
++number_of_lstm = wandb.config['params']['number_of_lstm']['value']
++
+ # limit gpu usage for keras
+ gpu_devices = tf.config.experimental.list_physical_devices("GPU")
+ for device in gpu_devices:
+@@ -216,7 +230,8 @@ import h5py
+ 
+ home = str(Path.home())
+ 
+-file_name = "arch=DLOB&name=two_model&WL=200&pt=1&sl=1&min_ret=4.347826086956522e-05&vbs=0.5&head=0&skip=0&vol_max=4.3498260869565224e-05&vol_min=4.348826086956522e-05&filter=none&cm_vol_mod=0&sw=on&fd=off&input=obook&ntb=True&tslbc=True.h5"
++file_name = "esugj36b.h5"
++wandb.config.update({'dataset': file_name})
+ path = home + "/ProdigyAI/data/preprocessed/" + file_name
+ h5f = h5py.File(path, "r")
+ prices_for_window_index_array_train = h5f[
+@@ -268,6 +283,7 @@ def generate_y_numba(batch_size, n_classes, list_IDs_temp, y_data):
+ 
+ class DataGenerator(tf.compat.v2.keras.utils.Sequence):
+     def __init__(self,
++                 checkpoint_path,
+                  prices_for_window_index_array,
+                  input_features_normalized,
+                  y_data,
+@@ -277,6 +293,7 @@ class DataGenerator(tf.compat.v2.keras.utils.Sequence):
+                  to_fit,
+                  shuffle=True):
+         self.batch_size = batch_size
++        self.checkpoint_path = checkpoint_path
+         self.prices_for_window_index_array = prices_for_window_index_array
+         self.input_features_normalized = input_features_normalized
+         self.labels = y_data
+@@ -323,6 +340,8 @@ class DataGenerator(tf.compat.v2.keras.utils.Sequence):
+ 
+     def on_epoch_end(self):
+ 
++        wandb.save(self.checkpoint_path)
++
+         self.indexes = np.arange(len(self.prices_for_window_index_array))
+ 
+         if self.shuffle:
+@@ -351,8 +370,7 @@ class DataGenerator(tf.compat.v2.keras.utils.Sequence):
+ 
+ 
+ n_classes = 3
+-dim = (200, 40)
+-batch_size = 64
++dim = (window_length, num_features)
+ to_fit = True
+ 
+ # for X_batch, y_batch in DataGenerator(prices_for_window_index_array_train,
+@@ -371,70 +389,6 @@ to_fit = True
+ 
+ ## PRODIGY AI HOCKUS POCKUS END
+ 
+-
+-### Model Architecture
+-def create_deeplob(T, NF, number_of_lstm):
+-    input_lmd = Input(shape=(T, NF, 1))
+-
+-    # build the convolutional block
+-    conv_first1 = Conv2D(32, (1, 2), strides=(1, 2))(input_lmd)
+-    conv_first1 = LeakyReLU(alpha=0.01)(conv_first1)
+-    conv_first1 = Conv2D(32, (4, 1), padding="same")(conv_first1)
+-    conv_first1 = LeakyReLU(alpha=0.01)(conv_first1)
+-    conv_first1 = Conv2D(32, (4, 1), padding="same")(conv_first1)
+-    conv_first1 = LeakyReLU(alpha=0.01)(conv_first1)
+-
+-    conv_first1 = Conv2D(32, (1, 2), strides=(1, 2))(conv_first1)
+-    conv_first1 = LeakyReLU(alpha=0.01)(conv_first1)
+-    conv_first1 = Conv2D(32, (4, 1), padding="same")(conv_first1)
+-    conv_first1 = LeakyReLU(alpha=0.01)(conv_first1)
+-    conv_first1 = Conv2D(32, (4, 1), padding="same")(conv_first1)
+-    conv_first1 = LeakyReLU(alpha=0.01)(conv_first1)
+-
+-    conv_first1 = Conv2D(32, (1, 10))(conv_first1)
+-    conv_first1 = LeakyReLU(alpha=0.01)(conv_first1)
+-    conv_first1 = Conv2D(32, (4, 1), padding="same")(conv_first1)
+-    conv_first1 = LeakyReLU(alpha=0.01)(conv_first1)
+-    conv_first1 = Conv2D(32, (4, 1), padding="same")(conv_first1)
+-    conv_first1 = LeakyReLU(alpha=0.01)(conv_first1)
+-
+-    # build the inception module
+-    convsecond_1 = Conv2D(64, (1, 1), padding="same")(conv_first1)
+-    convsecond_1 = LeakyReLU(alpha=0.01)(convsecond_1)
+-    convsecond_1 = Conv2D(64, (3, 1), padding="same")(convsecond_1)
+-    convsecond_1 = LeakyReLU(alpha=0.01)(convsecond_1)
+-
+-    convsecond_2 = Conv2D(64, (1, 1), padding="same")(conv_first1)
+-    convsecond_2 = LeakyReLU(alpha=0.01)(convsecond_2)
+-    convsecond_2 = Conv2D(64, (5, 1), padding="same")(convsecond_2)
+-    convsecond_2 = LeakyReLU(alpha=0.01)(convsecond_2)
+-
+-    convsecond_3 = MaxPooling2D((3, 1), strides=(1, 1),
+-                                padding="same")(conv_first1)
+-    convsecond_3 = Conv2D(64, (1, 1), padding="same")(convsecond_3)
+-    convsecond_3 = LeakyReLU(alpha=0.01)(convsecond_3)
+-
+-    convsecond_output = concatenate([convsecond_1, convsecond_2, convsecond_3],
+-                                    axis=3)
+-
+-    # use the MC dropout here
+-    conv_reshape = Reshape(
+-        (int(convsecond_output.shape[1]),
+-         int(convsecond_output.shape[3])))(convsecond_output)
+-
+-    conv_lstm = layers.LSTM(number_of_lstm)(conv_reshape)
+-
+-    # build the output layer
+-    out = Dense(3, activation="softmax")(conv_lstm)
+-    model = Model(inputs=input_lmd, outputs=out)
+-    adam = Adam(lr=0.01, beta_1=0.9, beta_2=0.999, epsilon=1)
+-    model.compile(optimizer=adam,
+-                  loss="categorical_crossentropy",
+-                  metrics=["accuracy"])
+-
+-    return model
+-
+-
+ checkpoint_path = path_adjust + "temp/cp.ckpt"
+ # Create a callback that saves the model's weights
+ cp_callback = ModelCheckpoint(filepath=checkpoint_path,
+@@ -446,9 +400,8 @@ if check_point_file.exists() and resuming == "resuming":
+     print("weights loaded")
+     model.load_weights(checkpoint_path)
+ 
+-batch_size = 64
+-
+-train_generator = DataGenerator(prices_for_window_index_array_train,
++train_generator = DataGenerator(checkpoint_path,
++                                prices_for_window_index_array_train,
+                                 input_features_normalized_train,
+                                 y_train,
+                                 batch_size,
+@@ -457,7 +410,8 @@ train_generator = DataGenerator(prices_for_window_index_array_train,
+                                 to_fit,
+                                 shuffle=True)
+ 
+-val_generator = DataGenerator(prices_for_window_index_array_val,
++val_generator = DataGenerator(checkpoint_path,
++                              prices_for_window_index_array_val,
+                               input_features_normalized_val,
+                               y_val,
+                               batch_size,
+@@ -469,14 +423,87 @@ val_generator = DataGenerator(prices_for_window_index_array_val,
+ steps_per_epoch = len(train_generator)
+ validation_steps = len(val_generator)
+ 
+-deeplob = create_deeplob(200, 40, 64)
+-deeplob.fit(train_generator,
+-            steps_per_epoch=steps_per_epoch,
+-            validation_steps=validation_steps,
+-            epochs=100,
+-            verbose=2,
+-            validation_data=val_generator,
+-            callbacks=[cp_callback, WandbCallback()])
++if wandb.run.resumed:
++    wandb.restore("model-best.h5",run_path="garthtrickett/prodigyai/" + wandb.run.id)
++    # restore the best model
++    deeplob = tensorflow.keras.models.load_model(wandb.restore("model-best.h5").name)
++    adam = Adam(lr=0.01, beta_1=0.9, beta_2=0.999, epsilon=1)
++    deeplob.compile(optimizer=adam,
++                    loss="categorical_crossentropy",
++                    metrics=["accuracy"])
++else:
++    ### Model Architecture
++    def create_deeplob(T, NF, number_of_lstm):
++        input_lmd = Input(shape=(T, NF, 1))
++
++        # build the convolutional block
++        conv_first1 = Conv2D(32, (1, 2), strides=(1, 2))(input_lmd)
++        conv_first1 = LeakyReLU(alpha=0.01)(conv_first1)
++        conv_first1 = Conv2D(32, (4, 1), padding="same")(conv_first1)
++        conv_first1 = LeakyReLU(alpha=0.01)(conv_first1)
++        conv_first1 = Conv2D(32, (4, 1), padding="same")(conv_first1)
++        conv_first1 = LeakyReLU(alpha=0.01)(conv_first1)
++
++        conv_first1 = Conv2D(32, (1, 2), strides=(1, 2))(conv_first1)
++        conv_first1 = LeakyReLU(alpha=0.01)(conv_first1)
++        conv_first1 = Conv2D(32, (4, 1), padding="same")(conv_first1)
++        conv_first1 = LeakyReLU(alpha=0.01)(conv_first1)
++        conv_first1 = Conv2D(32, (4, 1), padding="same")(conv_first1)
++        conv_first1 = LeakyReLU(alpha=0.01)(conv_first1)
++
++        conv_first1 = Conv2D(32, (1, 10))(conv_first1)
++        conv_first1 = LeakyReLU(alpha=0.01)(conv_first1)
++        conv_first1 = Conv2D(32, (4, 1), padding="same")(conv_first1)
++        conv_first1 = LeakyReLU(alpha=0.01)(conv_first1)
++        conv_first1 = Conv2D(32, (4, 1), padding="same")(conv_first1)
++        conv_first1 = LeakyReLU(alpha=0.01)(conv_first1)
++
++        # build the inception module
++        convsecond_1 = Conv2D(64, (1, 1), padding="same")(conv_first1)
++        convsecond_1 = LeakyReLU(alpha=0.01)(convsecond_1)
++        convsecond_1 = Conv2D(64, (3, 1), padding="same")(convsecond_1)
++        convsecond_1 = LeakyReLU(alpha=0.01)(convsecond_1)
++
++        convsecond_2 = Conv2D(64, (1, 1), padding="same")(conv_first1)
++        convsecond_2 = LeakyReLU(alpha=0.01)(convsecond_2)
++        convsecond_2 = Conv2D(64, (5, 1), padding="same")(convsecond_2)
++        convsecond_2 = LeakyReLU(alpha=0.01)(convsecond_2)
++
++        convsecond_3 = MaxPooling2D((3, 1), strides=(1, 1),
++                                    padding="same")(conv_first1)
++        convsecond_3 = Conv2D(64, (1, 1), padding="same")(convsecond_3)
++        convsecond_3 = LeakyReLU(alpha=0.01)(convsecond_3)
++
++        convsecond_output = concatenate(
++            [convsecond_1, convsecond_2, convsecond_3], axis=3)
++
++        # use the MC dropout here
++        conv_reshape = Reshape(
++            (int(convsecond_output.shape[1]),
++             int(convsecond_output.shape[3])))(convsecond_output)
++
++        conv_lstm = layers.LSTM(number_of_lstm)(conv_reshape)
++
++        # build the output layer
++        out = Dense(3, activation="softmax")(conv_lstm)
++        model = Model(inputs=input_lmd, outputs=out)
++        adam = Adam(lr=0.01, beta_1=0.9, beta_2=0.999, epsilon=1)
++        model.compile(optimizer=adam,
++                      loss="categorical_crossentropy",
++                      metrics=["accuracy"])
++
++        return model
++
++    deeplob = create_deeplob(window_length, num_features, number_of_lstm)
++deeplob.fit(
++    train_generator,
++    steps_per_epoch=steps_per_epoch,
++    validation_steps=validation_steps,
++    epochs=100,
++    verbose=2,
++    validation_data=val_generator,
++    callbacks=[cp_callback,
++               WandbCallback(save_model=True, monitor="loss")])
+ 
+ finished_weights_path = path_adjust + "temp/cp_end.ckpt"
+ deeplob.save_weights(finished_weights_path)
+diff --git a/pipeline/preprocessing.py b/pipeline/preprocessing.py
+index 932ae0b..714d325 100644
+--- a/pipeline/preprocessing.py
++++ b/pipeline/preprocessing.py
+@@ -136,54 +136,67 @@ if stage == 2:
+     side = X_for_all_labels["predicted_bins"]
+     # Could use the probabilities (instead of [1,0,0] use [0.2,0.55,0.25]
+ 
++import yaml
++import wandb
++
++yaml_path = path_adjust + "yaml/preprocessing.yaml"
++with open(yaml_path) as file:
++    yaml_dict = yaml.load(file, Loader=yaml.FullLoader)
++
++config_dictionary = dict(yaml=yaml_path, params=yaml_dict)
++
++wandb.init(
++    dir="~/ProdigyAI/",
++    project="prodigyai",
++    config=config_dictionary,
++)
++
++minimum_return = eval(wandb.config['params']['minimum_return']['value'])
++vertical_barrier_seconds = eval(
++    wandb.config['params']['vertical_barrier_seconds']['value'])
++
+ # Parameters
+ parameters = dict()
+-model_arch = "TABL"
+-parameters["arch"] = model_arch
+-parameters["name"] = model
+-parameters["WL"] = 200  # WINDOW LONG
+-parameters["pt"] = 1
+-parameters["sl"] = 1
+-parameters["min_ret"] = 0.001 * 1 / 23
+-parameters["vbs"] = round(1 / 2,
+-                          3)  # Increasing this decreases vertical touches
+-parameters["head"] = 1000  # take only first x number of rows 0 means of
+-parameters["skip"] = 0  # sample every n'th row if skip > 0
+-# get even classes at fraction = 0.8 so the training set is balanced then set to 1
+-# 3 million rows is about the limit of before it starts taking ages / memory maxing
+-parameters["vol_max"] = (
+-    parameters["min_ret"] + 0.00000002
++wandb.config['params']['head'][
++    'value'] = 1000  # take only first x number of rows 0 means of
++volume_max = (
++    minimum_return + wandb.config['params']['vol_max_modifier']['value']
+ )  # The higher this is the more an increase in volatility requries an increase
+ # in return to be considered buy/sell (Increasing this increases end barrier vertical touches)
+-parameters["vol_min"] = parameters["min_ret"] + 0.00000001
++volume_min = minimum_return + wandb.config['params']['vol_min_modifier'][
++    'value']
+ 
+-parameters["filter"] = "none"
++filter_type = wandb.config['params']['filter_type']['value']
+ 
+-if parameters["filter"] == "cm":
+-    parameters["cm_vol_mod"] = 500
++if filter_type == "cm":
++    cusum_filter_vol_modifier = wandb.config['params'][
++        'cusum_filter_volume_modifier']['value']
+ else:
+-    parameters["cm_vol_mod"] = 0
++    cusum_filter_vol_modifier = 0
+ 
+-parameters["sw"] = "on"  # sample weights
+-parameters["fd"] = "off"
++use_sample_weights = wandb.config['params']['use_sample_weights']['value']
++use_sample_weights = wandb.config['params']['use_fractional_differentiation'][
++    'value']
+ 
+-parameters["input"] = "obook"
++input_type = wandb.config['params']['input_type']['value']
+ 
+-parameters["ntb"] = True  # non time bars
++# parameters["ntb"] = True  # non time bars
+ 
+-if parameters["ntb"] == True:
+-    # Pick whether you want to add in the time since last bar input feature
+-    # time since last bar column
+-    parameters["tslbc"] = True  # time since last bar column
+-else:
+-    # Pick whether you want to add in the volume input feature
+-    parameters["vbc"] = True  # volume bar column
++# if parameters["ntb"] == True:
++#     # Pick whether you want to add in the time since last bar input feature
++#     # time since last bar column
++#     parameters["tslbc"] = True  # time since last bar column
++# else:
++#     # Pick whether you want to add in the volume input feature
++#     parameters["vbc"] = True  # volume bar column
+ 
+ # Create the txt file string
+-parameter_string = "&".join("{}{}{}".format(key, "=", val)
+-                            for key, val in parameters.items())
++parameter_string = wandb.run.id
+ 
+-pt_sl = [parameters["pt"], parameters["sl"]]
++pt_sl = [
++    wandb.config['params']['profit_taking_multiplier']['value'],
++    wandb.config['params']['stop_loss_multiplier']['value']
++]
+ cpus = cpu_count() - 1
+ 
+ regenerate_features_and_labels = True
+@@ -192,10 +205,10 @@ if regenerate_features_and_labels == True:
+     if stage == 1:
+         # Side
+         print("starting data load")
+-        head = parameters["head"]
++        head = wandb.config['params']['head']['value']
+ 
+         # # read parquet file of dollar bars
+-        if parameters["input"] == "bars":
++        if input_type == "bars":
+             # Mlfinlab bars
+             data = pq.read_pandas(
+                 path_adjust + "data/bars/"
+@@ -216,7 +229,7 @@ if regenerate_features_and_labels == True:
+             data.index = pd.to_datetime(data.index, infer_datetime_format=True)
+ 
+         # read parquet file of raw ticks
+-        if parameters["input"] == "ticks":
++        if input_type == "ticks":
+             data = pq.read_pandas(
+                 path_adjust + "data/bars/" +
+                 "btcusdt_agg_trades_raw_tick_data.parquet").to_pandas()
+@@ -238,11 +251,7 @@ if regenerate_features_and_labels == True:
+             # Should do something else than drop the duplicates (maybe trades doesnt have duplicate indexes rather than aggtrades)
+             data = data.loc[~data.index.duplicated(keep="first")]
+ 
+-            # skip most rows if this is > 1
+-            if parameters["skip"] > 0:
+-                data = data.iloc[::parameters["skip"], :]
+-
+-        if parameters["input"] == "obook":
++        if input_type == "orderbook":
+             with open(path_adjust + "temp/orderbook_data_name.txt",
+                       "r") as text_file:
+                 orderbook_preprocessed_file_name = text_file.read()
+@@ -275,7 +284,7 @@ if regenerate_features_and_labels == True:
+         # duplicate_fast_search(data.index.duplicated())
+ 
+         # Fractional differentiation
+-        if parameters["fd"] == "on":
++        if use_sample_weights == "on":
+             data_series = data["close"].to_frame()
+             # # generate 100 points
+             # nsample = 1000
+@@ -313,16 +322,16 @@ if regenerate_features_and_labels == True:
+ 
+         start = time.time()
+         volatility_level_array = volatility_levels_numba(
+-            np.ascontiguousarray(data.close.values), parameters["WL"])
++            np.ascontiguousarray(data.close.values),
++            wandb.config['params']['window_length']['value'])
+         data["window_volatility_level"] = volatility_level_array
+ 
+         # Should adjust the max value
+         # To get more vertical touches we can
+         # either increase vol_max or
+         # decrease the window seconds
+-        scaler = MinMaxScaler(
+-            feature_range=(parameters["vol_min"],
+-                           parameters["vol_max"]))  # normalization
++        scaler = MinMaxScaler(feature_range=(volume_min,
++                                             volume_max))  # normalization
+ 
+         normed_window_volatility_level = scaler.fit_transform(
+             data[["window_volatility_level"]])
+@@ -338,7 +347,7 @@ if regenerate_features_and_labels == True:
+         close_np_array, close_index_np_array = pandas_series_to_numba_ready_np_arrays(
+             close_copy)
+ 
+-        volatility_threshold = volatility_threshold * parameters["cm_vol_mod"]
++        volatility_threshold = volatility_threshold * cusum_filter_vol_modifier
+         print("data_len = " + str(len(data)))
+         start = time.time()
+         sampled_idx = filter_events(
+@@ -346,7 +355,7 @@ if regenerate_features_and_labels == True:
+             close_np_array,
+             close_index_np_array,
+             volatility_threshold,
+-            parameters["filter"],
++            filter_type,
+         )
+         print("sampled_idx_len = " + str(len(sampled_idx)))
+         end = time.time()
+@@ -356,7 +365,8 @@ if regenerate_features_and_labels == True:
+         # size
+         start = time.time()
+         volatility_level_array = volatility_levels_numba(
+-            data.close.values, parameters["WL"])
++            data.close.values,
++            wandb.config['params']['window_length']['value'])
+         data["window_volatility_level"] = volatility_level_array
+ 
+     # This code runs for both first and second stage preprocessing
+@@ -364,7 +374,7 @@ if regenerate_features_and_labels == True:
+     vertical_barrier_timestamps = ml.labeling.add_vertical_barrier(
+         t_events=sampled_idx,
+         close=data["close"],
+-        num_seconds=parameters["vbs"])
++        num_seconds=vertical_barrier_seconds)
+     end = time.time()
+     print("vertical barrier" + str(end - start))
+ 
+@@ -376,7 +386,7 @@ if regenerate_features_and_labels == True:
+         t_events=sampled_idx,
+         pt_sl=pt_sl,
+         target=data["window_volatility_level"],
+-        min_ret=parameters["min_ret"],
++        min_ret=minimum_return,
+         num_threads=cpus * 2,
+         vertical_barrier_times=vertical_barrier_timestamps,
+         side_prediction=side,
+@@ -533,26 +543,27 @@ if stage == 1:
+     ### ORDERBOOK VOLUME DATA
+     volumes_for_all_labels = volumes.loc[data.close.index]
+ 
+-    ## TRADE DATA
+-    input_features_trade = []
+-    close_array = data.close.values
+-    input_features_trade.append(close_array)
++    # ## TRADE DATA
++    # input_features_trade = []
++    # close_array = data.close.values
++    # input_features_trade.append(close_array)
+ 
+-    if parameters["ntb"] == False and parameters["vbc"] == True:
+-        volume_array = data.volume.values
+-        input_features_trade.append(volume_array)
+-    if parameters["ntb"] == True and parameters["tslbc"] == True:
+-        time_since_last_bar_array = data.time_since_last_bar.values
+-        input_features_trade.append(time_since_last_bar_array)
++    # if parameters["ntb"] == False and parameters["vbc"] == True:
++    #     volume_array = data.volume.values
++    #     input_features_trade.append(volume_array)
++    # if parameters["ntb"] == True and parameters["tslbc"] == True:
++    #     time_since_last_bar_array = data.time_since_last_bar.values
++    #     input_features_trade.append(time_since_last_bar_array)
+ 
+     end_time = time.time()
+     print(end_time - start_time)
+ 
+-    # min max limits
++    # Type of scaling to apply
++    scaling_type = wandb.config['params']['scaling_type']['value']
+ 
+-    minimum = -1
+-    maximum = 1
+-    scaling_type = "z_score"
++    # min max limits
++    minimum = wandb.config['params']['scaling_maximum']['value']
++    maximum = wandb.config['params']['scaling_minimum']['value']
+ 
+     ### Split intothe training/validation/test sets
+     print("splitting into train/va/test sets start")
+@@ -573,11 +584,13 @@ if stage == 1:
+ 
+     volumes_for_all_labels_train = volumes_for_all_labels.iloc[
+         train_close_array_integer_index[0] -
+-        parameters["WL"]:train_close_array_integer_index[-1] + 2]
++        wandb.config['params']['window_length']['value']:
++        train_close_array_integer_index[-1] + 2]
+ 
+     close_index_array_train = close_index_array[
+         train_close_array_integer_index[0] -
+-        parameters["WL"]:train_close_array_integer_index[-1] + 2]
++        wandb.config['params']['window_length']['value']:
++        train_close_array_integer_index[-1] + 2]
+ 
+     end_time = time.time()
+ 
+@@ -623,7 +636,7 @@ if stage == 1:
+     # print("Make window started")
+     # start_time = time.time()
+ 
+-    # padding = parameters["WL"] * 2
++    # padding = wandb.config['params']['window_length']['value'] * 2
+ 
+     # split_by = 100000
+ 
+@@ -652,7 +665,7 @@ if stage == 1:
+     #         len(prices_for_window_index_array_train[start_index:end_index]),
+     #         input_features_normalized_train[:, close_and_input_start_index:
+     #                                         close_and_input_end_index],
+-    #         parameters["WL"],
++    #         wandb.config['params']['window_length']['value'],
+     #         model_arch,
+     #     )
+ 
+@@ -697,11 +710,13 @@ if stage == 1:
+ 
+     volumes_for_all_labels_val = volumes_for_all_labels.iloc[
+         val_close_array_integer_index[0] -
+-        parameters["WL"]:val_close_array_integer_index[-1] + 2]
++        wandb.config['params']['window_length']['value']:
++        val_close_array_integer_index[-1] + 2]
+ 
+     close_index_array_val = close_index_array[
+         val_close_array_integer_index[0] -
+-        parameters["WL"]:val_close_array_integer_index[-1] + 2]
++        wandb.config['params']['window_length']['value']:
++        val_close_array_integer_index[-1] + 2]
+ 
+     input_features_val = make_input_features_from_orderbook_data(
+         volumes_for_all_labels_val)
+@@ -721,7 +736,7 @@ if stage == 1:
+     #     #     prices_for_window_index_array_val,
+     #     #     close_index_array_val,
+     #     #     input_features_normalized_val,
+-    #     #     parameters["WL"],
++    #     #     wandb.config['params']['window_length']['value'],
+     #     #     model_arch,
+     #     # )
+ 
+@@ -736,11 +751,13 @@ if stage == 1:
+ 
+     volumes_for_all_labels_test = volumes_for_all_labels.iloc[
+         test_close_array_integer_index[0] -
+-        parameters["WL"]:test_close_array_integer_index[-1] + 2]
++        wandb.config['params']['window_length']['value']:
++        test_close_array_integer_index[-1] + 2]
+ 
+     close_index_array_test = close_index_array[
+         test_close_array_integer_index[0] -
+-        parameters["WL"]:test_close_array_integer_index[-1] + 2]
++        wandb.config['params']['window_length']['value']:
++        test_close_array_integer_index[-1] + 2]
+ 
+     input_features_test = make_input_features_from_orderbook_data(
+         volumes_for_all_labels_test)
+@@ -761,7 +778,7 @@ if stage == 1:
+ #     #     prices_for_window_index_array_test,
+ #     #     close_index_array_test,
+ #     #     input_features_normalized_test,
+-#     #     parameters["WL"],
++#     #     wandb.config['params']['window_length']['value'],
+ #     #     model_arch,
+ #     # )
+ 
+@@ -782,8 +799,9 @@ ax = plt.gca()
+ 
+ data.iloc[window_index - 200:window_index + 200].plot(y="close",
+                                                       use_index=True)
+-plot_window_and_touch_and_label(window_index, parameters["WL"], data,
+-                                triple_barrier_events, labels)
++plot_window_and_touch_and_label(
++    window_index, wandb.config['params']['window_length']['value'], data,
++    triple_barrier_events, labels)
+ 
+ data.iloc[window_index - 10:window_index + 30]
+ 
+@@ -837,9 +855,9 @@ print("writing train/val/test to .h5 files finished taking " +
+ #     h5f.create_dataset("P", data=P)
+ # h5f.create_dataset("y", data=y)
+ # h5f.create_dataset("sampled_idx_epoch", data=sampled_idx_epoch)
+-# if parameters["sw"] == "on":
++# if use_sample_weights == "on":
+ #     h5f.create_dataset("sample_weights", data=sample_weights)
+-# elif parameters["sw"] == "off":
++# elif use_sample_weights == "off":
+ #     h5f.create_dataset("sample_weights", data=np.zeros(1))
+ # h5f.close()
+ 
+diff --git a/pipeline/tabl.py b/pipeline/tabl.py
+index 87d51f8..c0b3f2f 100644
+--- a/pipeline/tabl.py
++++ b/pipeline/tabl.py
+@@ -17,10 +17,11 @@ home = str(Path.home())
+ sys.path.append(home + "/ProdigyAI")
+ 
+ from numba import njit, prange
++import tensorflow
+ import tensorflow as tf
+ import math
+ 
+-import keras
++
+ import numpy as np
+ from third_party_libraries.TABL import Models
+ from third_party_libraries.keras_lr_finder.lr_finder import LRFinder
+@@ -28,7 +29,7 @@ from third_party_libraries.CLR.clr_callbacks import CyclicLR
+ 
+ from tensorflow.keras.losses import categorical_crossentropy
+ from tensorflow.keras.optimizers import SGD, Adam
+-from keras.callbacks import ModelCheckpoint
++from tensorflow.keras.callbacks import ModelCheckpoint
+ 
+ # Init wandb
+ import wandb
+@@ -95,25 +96,24 @@ with open(yaml_path) as file:
+     yaml_dict = yaml.load(file, Loader=yaml.FullLoader)
+ 
+ config_dictionary = dict(yaml=yaml_path, params=yaml_dict)
+-wandb.init(
+-    dir="~/ProdigyAI/",
+-    project="prodigyai",
+-    config=config_dictionary,
+-)
+-
+-# try with 1000 samples, 10 periods and then also with 0,1 normalization and balanced classes
+-
+-# 1 hidden layer network with input: 40x10, hidden 120x5, output 3x1
+-template = [[40, 200], [60, 10], [120, 5], [3, 1]]
+-
+-# example data
+-example_x = np.random.rand(1000, 40, 10)
+-np.min(example_x)
+-np.max(example_x)
+-np.mean(example_x)
+-example_y = keras.utils.to_categorical(np.random.randint(0, 3, (1000, )), 3)
+-template = [[40, 200], [60, 10], [120, 5], [3, 1]]
+-# 200(WINDOW LENGTH)
++wandb.init(dir="~/ProdigyAI/",
++           project="prodigyai",
++           config=config_dictionary,
++           resume=True)
++
++window_length = wandb.config['params']['window_length']['value']
++num_features = wandb.config['params']['num_features']['value']
++epochs = wandb.config['params']['epochs']['value']
++batch_size = wandb.config['params']['batch_size']['value']
++dropout = wandb.config['params']['dropout']['value']
++
++# # try with 1000 samples, 10 periods and then also with 0,1 normalization and balanced classes
++# # example data
++# example_x = np.random.rand(1000, 40, 10)
++# np.min(example_x)
++# np.max(example_x)
++# np.mean(example_x)
++# example_y = keras.utils.to_categorical(np.random.randint(0, 3, (1000, )), 3)
+ 
+ ## PRODIGY AI HOCKUS POCKUS START
+ from pathlib import Path
+@@ -121,7 +121,7 @@ import h5py
+ 
+ home = str(Path.home())
+ 
+-file_name = "arch=TABL&name=two_model&WL=200&pt=1&sl=1&min_ret=4.347826086956522e-05&vbs=0.5&head=1000&skip=0&vol_max=4.3498260869565224e-05&vol_min=4.348826086956522e-05&filter=none&cm_vol_mod=0&sw=on&fd=off&input=obook&ntb=True&tslbc=True.h5"
++file_name = "esugj36b.h5"
+ wandb.config.update({'dataset': file_name})
+ path = home + "/ProdigyAI/data/preprocessed/" + file_name
+ h5f = h5py.File(path, "r")
+@@ -265,8 +265,7 @@ class DataGenerator(tf.compat.v2.keras.utils.Sequence):
+ 
+ 
+ n_classes = 3
+-dim = (200, 40)
+-batch_size = 64
++dim = (window_length, num_features)
+ to_fit = True
+ 
+ # for X_batch, y_batch in DataGenerator(prices_for_window_index_array_train,
+@@ -280,12 +279,15 @@ to_fit = True
+ #     import pdb
+ #     pdb.set_trace()
+ 
++# 1 hidden layer network with input: 40x10, hidden 120x5, output 3x1
++
++template = [[num_features, window_length], [60, 10], [120, 5], [3, 1]]
++
+ # get Bilinear model
+ projection_regularizer = None
+-projection_constraint = keras.constraints.max_norm(3.0, axis=0)
++projection_constraint = tensorflow.keras.constraints.max_norm(3.0, axis=0)
+ attention_regularizer = None
+-attention_constraint = keras.constraints.max_norm(5.0, axis=1)
+-dropout = 0.1
++attention_constraint = tensorflow.keras.constraints.max_norm(5.0, axis=1)
+ 
+ model = Models.TABL(
+     template,
+@@ -440,7 +442,7 @@ clr = CyclicLR(base_lr=base_lr,
+                step_size=clr_step_size,
+                mode=mode)
+ 
+-optimizer = keras.optimizers.Adam()
++optimizer = tensorflow.keras.optimizers.Adam()
+ 
+ # Compile the model
+ model.compile(loss=loss_function, optimizer=optimizer, metrics=["accuracy"])
+@@ -489,12 +491,14 @@ steps_per_epoch = len(train_generator)
+ validation_steps = len(val_generator)
+ 
+ # example sata training
+-model.fit(train_generator,
+-          steps_per_epoch=steps_per_epoch,
+-          validation_steps=validation_steps,
+-          epochs=1000,
+-          validation_data=val_generator,
+-          callbacks=[cp_callback, WandbCallback()])
++model.fit(
++    train_generator,
++    steps_per_epoch=steps_per_epoch,
++    validation_steps=validation_steps,
++    epochs=epochs,
++    validation_data=val_generator,
++    callbacks=[cp_callback,
++               WandbCallback(save_model=True, monitor="loss")])
+ 
+ model.save(os.path.join(wandb.run.dir, "model.h5"))
+ # no class weight
+diff --git a/temp/cp.ckpt.data-00000-of-00001 b/temp/cp.ckpt.data-00000-of-00001
+index 56c00e4..3d9600c 100644
+Binary files a/temp/cp.ckpt.data-00000-of-00001 and b/temp/cp.ckpt.data-00000-of-00001 differ
+diff --git a/temp/cp.ckpt.index b/temp/cp.ckpt.index
+index 3770713..d6d3b4b 100644
+Binary files a/temp/cp.ckpt.index and b/temp/cp.ckpt.index differ
+diff --git a/temp/cp_end.ckpt b/temp/cp_end.ckpt
+index c1c1d9e..1d97f15 100644
+Binary files a/temp/cp_end.ckpt and b/temp/cp_end.ckpt differ
+diff --git a/temp/cp_end.ckpt.data-00000-of-00001 b/temp/cp_end.ckpt.data-00000-of-00001
+index 1d572d0..12d3157 100644
+Binary files a/temp/cp_end.ckpt.data-00000-of-00001 and b/temp/cp_end.ckpt.data-00000-of-00001 differ
+diff --git a/temp/cp_end.ckpt.index b/temp/cp_end.ckpt.index
+index 15de09a..0ab67e1 100644
+Binary files a/temp/cp_end.ckpt.index and b/temp/cp_end.ckpt.index differ
+diff --git a/temp/is_script_finished.txt b/temp/is_script_finished.txt
+index 40ca0d3..bec7a08 100644
+--- a/temp/is_script_finished.txt
++++ b/temp/is_script_finished.txt
+@@ -1 +1 @@
+-full_script_time64.39192986488342
+\ No newline at end of file
++full_script_time25.707124948501587
+\ No newline at end of file
+Submodule third_party_libraries/TABL contains modified content
+Submodule third_party_libraries/TABL 7f25314..df3e92d:
+diff --git a/third_party_libraries/TABL/Layers.py b/third_party_libraries/TABL/Layers.py
+index 9020002..b299e57 100644
+--- a/third_party_libraries/TABL/Layers.py
++++ b/third_party_libraries/TABL/Layers.py
+@@ -3,8 +3,9 @@
+ """
+ @author: Dat Tran (dat.tranthanh@tut.fi)
+ """
++import keras
+ from keras import backend as K
+-from keras.engine.topology import Layer
++from keras.layers import Layer
+ from keras import activations as Activations
+ from keras import initializers as Initializers
+ 
+@@ -18,25 +19,25 @@ class Constraint(object):
+ 
+     def get_config(self):
+         return {}
+-    
++
++
+ class MinMax(Constraint):
+     """
+     Customized min-max constraint for scalar
+     """
+-
+     def __init__(self, min_value=0.0, max_value=10.0):
+         self.min_value = min_value
+         self.max_value = max_value
++
+     def __call__(self, w):
+-        
+-        return K.clip(w,self.min_value,self.max_value)
++
++        return K.clip(w, self.min_value, self.max_value)
+ 
+     def get_config(self):
+-        return {'min_value': self.min_value,
+-                'max_value': self.max_value}
+-        
++        return {'min_value': self.min_value, 'max_value': self.max_value}
+ 
+-def nmodeproduct(x,w,mode):
++
++def nmodeproduct(x, w, mode):
+     """
+     n-mode product for 2D matrices
+     x: NxHxW
+@@ -45,74 +46,83 @@ def nmodeproduct(x,w,mode):
+     
+     output: NxhxW (mode1) or NxHxw (mode2)
+     """
+-    if mode==2:
+-        x=K.dot(x,w)
++    if mode == 2:
++        x = K.dot(x, w)
+     else:
+-        x=K.permute_dimensions(x,(0,2,1))
+-        x=K.dot(x,w)
+-        x=K.permute_dimensions(x,(0,2,1))
++        x = K.permute_dimensions(x, (0, 2, 1))
++        x = K.dot(x, w)
++        x = K.permute_dimensions(x, (0, 2, 1))
+     return x
+ 
++
+ class BL(Layer):
+     """
+     Bilinear Layer
+     """
+-    def __init__(self, output_dim,
++    def __init__(self,
++                 output_dim,
+                  kernel_regularizer=None,
+-                 kernel_constraint=None,**kwargs):
++                 kernel_constraint=None,
++                 **kwargs):
+         """
+         output_dim : output dimensions of 2D tensor, should be a list of len 2, e.g. [30,20]
+         kernel_regularizer : keras regularizer object
+         kernel_constraint: keras constraint object
+         """
+-        
++
+         self.output_dim = output_dim
+-        self.kernel_regularizer=kernel_regularizer
+-        self.kernel_constraint=kernel_constraint
+-        
++        self.kernel_regularizer = kernel_regularizer
++        self.kernel_constraint = kernel_constraint
++
+         super(BL, self).__init__(**kwargs)
+ 
+     def build(self, input_shape):
+-        self.W1 = self.add_weight(name='W1',shape=(input_shape[1], self.output_dim[0]),
+-                                      initializer='he_uniform',
+-                                      regularizer=self.kernel_regularizer,
+-                                      constraint=self.kernel_constraint,
+-                                      trainable=True)
+-        self.W2 = self.add_weight(name='W2',shape=(input_shape[2], self.output_dim[1]),
+-                                      initializer='he_uniform',
+-                                      regularizer=self.kernel_regularizer,
+-                                      constraint=self.kernel_constraint,
+-                                      trainable=True)
+-
+-        self.bias=self.add_weight(name='bias',shape=(self.output_dim[0],self.output_dim[1]),
+-                              initializer='zeros',trainable=True)
++        self.W1 = self.add_weight(name='W1',
++                                  shape=(input_shape[1], self.output_dim[0]),
++                                  initializer='he_uniform',
++                                  regularizer=self.kernel_regularizer,
++                                  constraint=self.kernel_constraint,
++                                  trainable=True)
++        self.W2 = self.add_weight(name='W2',
++                                  shape=(input_shape[2], self.output_dim[1]),
++                                  initializer='he_uniform',
++                                  regularizer=self.kernel_regularizer,
++                                  constraint=self.kernel_constraint,
++                                  trainable=True)
++
++        self.bias = self.add_weight(name='bias',
++                                    shape=(self.output_dim[0],
++                                           self.output_dim[1]),
++                                    initializer='zeros',
++                                    trainable=True)
+         super(BL, self).build(input_shape)
+ 
+     def call(self, x):
+         print(K.int_shape(x))
+-        x = nmodeproduct(x,self.W1,1)
+-        x = nmodeproduct(x,self.W2,2)
+-        x = K.bias_add(x,self.bias)
+-        
+-        if self.output_dim[1]==1:
+-            x = K.squeeze(x,axis=-1)
++        x = nmodeproduct(x, self.W1, 1)
++        x = nmodeproduct(x, self.W2, 2)
++        x = K.bias_add(x, self.bias)
++
++        if self.output_dim[1] == 1:
++            x = K.squeeze(x, axis=-1)
+         print(K.int_shape(x))
+         return x
+ 
+     def compute_output_shape(self, input_shape):
+-        if self.output_dim[1]==1:
++        if self.output_dim[1] == 1:
+             return (input_shape[0], self.output_dim[0])
+         else:
+             return (input_shape[0], self.output_dim[0], self.output_dim[1])
+-        
+-        
++
++
+ class TABL(Layer):
+     """
+     Temporal Attention augmented Bilinear Layer
+     https://arxiv.org/abs/1712.00975
+     
+     """
+-    def __init__(self, output_dim,
++    def __init__(self,
++                 output_dim,
+                  projection_regularizer=None,
+                  projection_constraint=None,
+                  attention_regularizer=None,
+@@ -125,45 +135,52 @@ class TABL(Layer):
+         attention_regularizer: keras regularizer object for attention matrix
+         attention_constraint: keras constraint object for attention matrix
+         """
+-        
++
+         self.output_dim = output_dim
+         self.projection_regularizer = projection_regularizer
+         self.projection_constraint = projection_constraint
+         self.attention_regularizer = attention_regularizer
+         self.attention_constraint = attention_constraint
+-        
++
+         super(TABL, self).__init__(**kwargs)
+ 
+     def build(self, input_shape):
+-        self.W1 = self.add_weight(name='W1',shape=(input_shape[1], self.output_dim[0]),
+-                                      initializer='he_uniform',
+-                                      regularizer=self.projection_regularizer,
+-                                      constraint=self.projection_constraint,
+-                                      trainable=True)
+-        
+-        self.W2 = self.add_weight(name='W2',shape=(input_shape[2], self.output_dim[1]),
+-                                      initializer='he_uniform',
+-                                      regularizer=self.projection_regularizer,
+-                                      constraint=self.projection_constraint,
+-                                      trainable=True)
+-        
+-        self.W = self.add_weight(name='W',shape=(input_shape[2], input_shape[2]),
+-                                      initializer=Initializers.Constant(1.0/input_shape[2]),
+-                                      regularizer=self.attention_regularizer,
+-                                      constraint=self.attention_constraint,
+-                                      trainable=True)
+-        
+-        self.alpha = self.add_weight(name='alpha',shape=(1,),
+-                                      initializer=Initializers.Constant(0.5),
+-                                      constraint=MinMax(),
+-                                      trainable=True)
+-
+-
+-        self.bias=self.add_weight(name='bias',shape=(1, self.output_dim[0],self.output_dim[1]),
+-                              initializer='zeros',trainable=True)
+-        
++        self.W1 = self.add_weight(name='W1',
++                                  shape=(input_shape[1], self.output_dim[0]),
++                                  initializer='he_uniform',
++                                  regularizer=self.projection_regularizer,
++                                  constraint=self.projection_constraint,
++                                  trainable=True)
++
++        self.W2 = self.add_weight(name='W2',
++                                  shape=(input_shape[2], self.output_dim[1]),
++                                  initializer='he_uniform',
++                                  regularizer=self.projection_regularizer,
++                                  constraint=self.projection_constraint,
++                                  trainable=True)
++
++        self.W = self.add_weight(name='W',
++                                 shape=(input_shape[2], input_shape[2]),
++                                 initializer=Initializers.Constant(
++                                     1.0 / input_shape[2]),
++                                 regularizer=self.attention_regularizer,
++                                 constraint=self.attention_constraint,
++                                 trainable=True)
++
++        self.alpha = self.add_weight(name='alpha',
++                                     shape=(1, ),
++                                     initializer=Initializers.Constant(0.5),
++                                     constraint=MinMax(),
++                                     trainable=True)
++
++        self.bias = self.add_weight(name='bias',
++                                    shape=(1, self.output_dim[0],
++                                           self.output_dim[1]),
++                                    initializer='zeros',
++                                    trainable=True)
++
+         self.in_shape = input_shape
+-        
++
+         super(TABL, self).build(input_shape)
+ 
+     def call(self, x):
+@@ -174,27 +191,26 @@ class TABL(Layer):
+         W: D2 x D2
+         """
+         # first mode projection
+-        x = nmodeproduct(x,self.W1,1) # N x d1 x D2
+-        # enforcing constant (1) on the diagonal 
+-        W = self.W-self.W*K.eye(self.in_shape[2],dtype='float32')+K.eye(self.in_shape[2],dtype='float32')/self.in_shape[2]
+-        # calculate attention 
+-        attention = Activations.softmax(nmodeproduct(x,W,2),axis=-1) # N x d1 x D2
++        x = nmodeproduct(x, self.W1, 1)  # N x d1 x D2
++        # enforcing constant (1) on the diagonal
++        W = self.W - self.W * K.eye(self.in_shape[2], dtype='float32') + K.eye(
++            self.in_shape[2], dtype='float32') / self.in_shape[2]
++        # calculate attention
++        attention = Activations.softmax(nmodeproduct(x, W, 2),
++                                        axis=-1)  # N x d1 x D2
+         # apply attention
+-        x = self.alpha*x + (1.0 - self.alpha)*x*attention
++        x = self.alpha * x + (1.0 - self.alpha) * x * attention
+         # second mode projection
+-        x = nmodeproduct(x,self.W2,2)
++        x = nmodeproduct(x, self.W2, 2)
+         # bias add
+         x = x + self.bias
+-        
+-        if self.output_dim[1]==1:
+-            x = K.squeeze(x,axis=-1)
++
++        if self.output_dim[1] == 1:
++            x = K.squeeze(x, axis=-1)
+         return x
+ 
+     def compute_output_shape(self, input_shape):
+-        if self.output_dim[1]==1:
++        if self.output_dim[1] == 1:
+             return (input_shape[0], self.output_dim[0])
+         else:
+             return (input_shape[0], self.output_dim[0], self.output_dim[1])
+-
+-
+-
+diff --git a/third_party_libraries/TABL/Models.py b/third_party_libraries/TABL/Models.py
+index e2bf62c..d5c4c45 100644
+--- a/third_party_libraries/TABL/Models.py
++++ b/third_party_libraries/TABL/Models.py
+@@ -4,7 +4,6 @@
+ @author: Dat Tran (dat.tranthanh@tut.fi)
+ """
+ 
+-
+ from third_party_libraries.TABL import Layers
+ import keras
+ 
+@@ -74,7 +73,8 @@ def TABL(
+ 
+     x = inputs
+     for k in range(1, len(template) - 1):
+-        x = Layers.BL(template[k], projection_regularizer, projection_constraint)(x)
++        x = Layers.BL(template[k], projection_regularizer,
++                      projection_constraint)(x)
+         x = keras.layers.Activation("relu")(x)
+         x = keras.layers.Dropout(dropout)(x)
+ 
+@@ -94,4 +94,3 @@ def TABL(
+     model.compile(optimizer, "categorical_crossentropy", ["acc"])
+ 
+     return model
+-
+diff --git a/third_party_libraries/TABL/__pycache__/Layers.cpython-37.pyc b/third_party_libraries/TABL/__pycache__/Layers.cpython-37.pyc
+new file mode 100644
+index 0000000..ff0a753
+Binary files /dev/null and b/third_party_libraries/TABL/__pycache__/Layers.cpython-37.pyc differ
+diff --git a/third_party_libraries/TABL/__pycache__/Models.cpython-37.pyc b/third_party_libraries/TABL/__pycache__/Models.cpython-37.pyc
+new file mode 100644
+index 0000000..a57f1ba
+Binary files /dev/null and b/third_party_libraries/TABL/__pycache__/Models.cpython-37.pyc differ
+diff --git a/yaml/tabl.yaml b/yaml/tabl.yaml
+index 2cdc7b2..456e287 100644
+--- a/yaml/tabl.yaml
++++ b/yaml/tabl.yaml
+@@ -4,4 +4,14 @@ epochs:
+   value: 100
+ batch_size:
+   desc: Size of each mini-batch
+-  value: 32
++  value: 256
++window_length:
++  desc: null
++  value: 200
++num_features:
++  desc: null
++  value: 40
++dropout:
++  desc: null
++  value: 0.1
++

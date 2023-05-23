@@ -1,0 +1,42 @@
+dataset:
+  desc: null
+  value: hxbbht7f.h5
+epochs:
+  desc: Number of epochs to train over
+  value: 100
+batch_size:
+  desc: Size of each mini-batch
+  value: 64
+window_length:
+  desc: null
+  value: 200
+num_features:
+  desc: null
+  value: 40
+dropout:
+  desc: null
+  value: 0.1
+number_of_lstm:
+  desc: null
+  value: 64
+head:
+  desc: null
+  value: 0
+run_training:
+  desc: null
+  value: True
+use_lr_finder:
+  desc: null
+  value: False
+use_clr:
+  desc: null
+  value: False
+use_sgdr:
+  desc: null
+  value: False
+use_cb_wr:
+  desc: null
+  value: False
+opt:
+  desc: null
+  value: sgd

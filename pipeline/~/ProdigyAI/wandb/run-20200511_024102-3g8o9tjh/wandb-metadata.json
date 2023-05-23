@@ -1,0 +1,27 @@
+{
+    "root": "/home/garthtrickett/ProdigyAI",
+    "program": "/home/garthtrickett/ProdigyAI/pipeline/tabl.py",
+    "git": {
+        "remote": "https://github.com/garthtrickett/ProdigyAI",
+        "commit": "7667fefed2018a0664418c25c97e3c08866a6f71"
+    },
+    "email": "garthtrickett@gmail.com",
+    "codePath": "pipeline/tabl.py",
+    "startedAt": "2020-05-11T02:41:02.887382",
+    "host": "preemp-cpu-1",
+    "username": "garthtrickett",
+    "executable": "/home/garthtrickett/miniconda3/envs/ProdigyAI/bin/python",
+    "os": "Linux-5.3.0-1018-gcp-x86_64-with-debian-buster-sid",
+    "python": "3.7.6",
+    "cpu_count": 6,
+    "args": [
+        "-f",
+        "/home/garthtrickett/.local/share/jupyter/runtime/kernel-8eba54d8-fc3e-454d-9841-fbcad48e090a.json"
+    ],
+    "state": "running",
+    "jobType": null,
+    "mode": "run",
+    "name": "radiant-dawn-38",
+    "project": "prodigyai",
+    "heartbeatAt": "2020-05-11T02:41:26.220737"
+}
